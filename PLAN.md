@@ -65,11 +65,14 @@ Conclusiones:
 ### Cámara
 
 - Hay una "USB Camera" y el permiso de cámara de Windows está en "Permitir".
-- **DirectShow no abre** el dispositivo en esta máquina. **Media Foundation (MSMF) sí abre**, con modo por
-  defecto 640×480 a 30 fps, así que pedir 1280×720 y leer lo que realmente entrega es obligatorio.
-- **Pendiente:** al pedir fotogramas, MSMF devolvió el error `0xC00D3704` (el dispositivo no pudo iniciar la
-  transmisión), que suele aparecer cuando otra aplicación tiene la cámara tomada. No pude medir la
-  resolución ni los fps reales. Hay que resolverlo antes de probar la etapa 1.
+- El modo por defecto es 640×480 a 30 fps, así que pedir 1280×720 y leer lo que realmente entrega es
+  obligatorio.
+- **Media Foundation (MSMF)** entrega 1280×720 a 30 fps si los parámetros se pasan al abrir. **DirectShow**
+  se queda en 10 fps (YUY2) o 14 fps (MJPG), así que en Windows se usa MSMF.
+- Con `OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS=0` la cámara abre en 1.7 s en vez de 6.8 s.
+- De esos 30 fps, **solo unos 24 son fotogramas distintos**: 28 de 149 eran copias exactas del anterior, y
+  los intervalos de entrega van de 12 a 66 ms. Es un límite de la cámara, no de la aplicación.
+- Si otra aplicación tiene la cámara tomada, abre pero no entrega fotogramas (error `0xC00D3704`).
 
 ### Lo que muestra el video
 
@@ -108,6 +111,9 @@ está la mano, no la pinza.** Aun así queda variación sin explicar (la misma p
    la etapa 1 el callback da problemas, la alternativa es un hilo propio con `detect_for_video`.
 2. **Hilos:** captura (conserva solo el último fotograma), detección (interno de MediaPipe) y principal
    (render y ventana). Un solo proceso y una sola ventana `cv2.imshow`.
+   **El dibujo lleva su propio reloj** (`FPS_OBJETIVO`, 45 por defecto como en el video) y usa el último
+   fotograma disponible; así el giro y la estela no heredan el ritmo irregular de la cámara. A la detección
+   solo se envían fotogramas nuevos.
 3. **Backend de cámara por sistema:** MSMF en Windows, AVFoundation en macOS, V4L2 en Linux, con `CAP_ANY`
    como respaldo. Se pide 1280×720 y se registra lo que entrega; si entrega otra cosa, se reescala al tamaño
    de ventana.
@@ -131,15 +137,27 @@ optimiza antes de seguir.
 
 `PLAN.md`, `requirements.txt`, `.gitignore`, modelo descargado, entorno verificado.
 
-### Etapa 1. Cámara, detección y esqueleto
+### Etapa 1. Cámara, detección y esqueleto (hecha, falta tu revisión visual)
 
-- `config.py`: resoluciones, índice de cámara, espejo, umbrales, cadenas de texto.
-- `camara.py`: hilo de captura con selección de backend y comprobación de la resolución real.
+- `config.py`: resoluciones, índice de cámara, espejo, ritmo de dibujo, umbrales, esqueleto.
+- `camara.py`: hilo de captura con selección de backend, comprobación de la resolución real y tres búferes
+  fijos.
 - `manos.py`: `HandLandmarker` en `LIVE_STREAM` sobre copia de 640×360.
-- `render.py`: espejo y esqueleto tenue de 1 px.
-- `main.py`: bucle, salida con `q` o `Esc`, argumentos de índice de cámara y resolución, fps en consola.
-- Prueba: se ve la cámara con el esqueleto sobre cada mano. Se anotan fps de render, ms de detección y
-  resolución real de la cámara.
+- `render.py`: recorte a la proporción de la ventana, espejo y esqueleto tenue de 1 px.
+- `main.py`: bucle con reloj propio, salida con `q`, `Esc` o cerrando la ventana, argumentos `--camara` y
+  `--resolucion`, y una línea de medición por segundo en consola.
+
+Medido con la cámara real a 1280×720:
+
+| Medida | Valor |
+|---|---|
+| Ritmo de dibujo | 45.0 fps, peor intervalo 22.6 a 23.2 ms (ideal 22.2) |
+| Fotogramas de cámara | 30 por segundo nominales, unos 24 distintos |
+| Detección | 12 a 14 ms sin manos, 20 a 30 ms con una o dos |
+| CPU del proceso | 60 a 90 % de un núcleo sin manos, 115 a 130 % con manos (de 12 núcleos lógicos) |
+| Memoria | 205 a 212 MB |
+
+El ritmo de dibujo casi no cambia el consumo (probado a 30, 45 y 60 fps): lo que pesa es la detección.
 
 ### Etapa 2. Dedos y roles
 
@@ -166,10 +184,13 @@ optimiza antes de seguir.
 
 ## 4. Pendientes y riesgos
 
-- **Cámara ocupada** (error `0xC00D3704`): cerrar lo que la esté usando y repetir la prueba. Bloquea la
-  prueba de la etapa 1, no su escritura.
-- **Fps de la cámara:** si la cámara entrega 30 fps a 1280×720, ese es el techo real; los 45 fps del video
-  dependen de la cámara del autor.
+- **Fps de la cámara:** la imagen de fondo se renueva unas 24 veces por segundo aunque la figura se dibuje a
+  45. Puede deberse a la exposición automática con poca luz o al ajuste antiparpadeo de la cámara; no se
+  controla desde OpenCV.
+- **Consumo de la detección:** es casi todo el gasto de CPU. Si hiciera falta bajarlo, la opción es limitar
+  cuántas detecciones por segundo se envían; se decide con las mediciones de la etapa 4.
+- **Decaimiento de la estela:** el 0.82 por fotograma del PROMPT corresponde a unos 45 fps; se expresará de
+  forma que no cambie de aspecto si se cambia `FPS_OBJETIVO`.
 - **Fórmula de escala:** la apertura explica la mayor parte, pero no todo. Se ajusta en la etapa 3.
 - **Espejo:** el video no permite confirmarlo; queda activado por defecto y ajustable.
 - **Fuente del texto:** se usará una sans del sistema (Segoe UI en Windows) con respaldo en la fuente
