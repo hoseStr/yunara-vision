@@ -36,11 +36,16 @@ class Render:
         if config.ESPEJO:
             cv2.flip(self.lienzo, 1, dst=self.lienzo)
 
+    def texto_provisional(self, texto, x, y):
+        """Texto de diagnóstico mientras no existan los textos definitivos (solo ASCII)."""
+        cv2.putText(self.lienzo, texto, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,
+                    (220, 220, 220), 1, cv2.LINE_AA)
+
     def esqueleto(self, manos):
         """Líneas tenues de 1 px entre los 21 puntos de cada mano."""
         limite = np.array((self.ancho, self.alto))
         for mano in manos:
-            puntos = (mano[:, :2] * limite).astype(np.int32)
+            puntos = (mano.puntos[:, :2] * limite).astype(np.int32)
             x0, y0 = np.maximum(puntos.min(axis=0) - 2, 0)
             x1, y1 = np.minimum(puntos.max(axis=0) + 3, limite)
             if x1 <= x0 or y1 <= y0:

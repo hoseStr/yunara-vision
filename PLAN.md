@@ -117,7 +117,8 @@ está la mano, no la pinza.** Aun así queda variación sin explicar (la misma p
 3. **Backend de cámara por sistema:** MSMF en Windows, AVFoundation en macOS, V4L2 en Linux, con `CAP_ANY`
    como respaldo. Se pide 1280×720 y se registra lo que entrega; si entrega otra cosa, se reescala al tamaño
    de ventana.
-4. **Escala:** por defecto, apertura de la segunda mano; la pinza queda como fórmula alternativa en `config`.
+4. **Escala:** por defecto, extensión de los dedos índice y medio de la segunda mano; la pinza queda como
+   fórmula alternativa en `config`.
 5. **Transformación entre figuras:** cada figura se remuestrea a 180 segmentos (mínimo común múltiplo de 4, 9,
    12 y 15 aristas, así cada arista se parte en trozos enteros) y se interpola segmento a segmento con
    suavizado. El anillo y el segmento usan los mismos 180.
@@ -159,20 +160,39 @@ Medido con la cámara real a 1280×720:
 
 El ritmo de dibujo casi no cambia el consumo (probado a 30, 45 y 60 fps): lo que pesa es la detección.
 
-### Etapa 2. Dedos y roles
+### Etapa 2. Dedos y roles (hecha, falta tu revisión visual)
 
-- Identidad de cada mano entre fotogramas por cercanía; rol principal para la más antigua, segunda para la
-  nueva, relevo cuando la principal se pierde.
-- Conteo de dedos con inercia de 4 fotogramas.
-- Medida de apertura de la segunda mano, escala con topes 0.35 y 3.2, y retención del último valor.
-- Prueba: estado provisional en pantalla con dedos, rol y escala; se verifica el relevo de manos.
+- `manos.py`: `Seguidor` mantiene la identidad de cada mano entre detecciones por cercanía de la palma. La
+  más antigua es la principal y la siguiente es la segunda; si la principal se pierde, la otra toma su lugar.
+  Una mano se da por perdida tras 4 detecciones seguidas sin verla, para que un parpadeo del detector no
+  cambie los roles.
+- Conteo de dedos con inercia de 4 detecciones iguales seguidas.
+- Escala con topes 0.35 y 3.2, que se conserva cuando la segunda mano sale.
+- Rótulos provisionales en pantalla (rol, identidad y dedos junto a cada mano, y una línea de estado).
+
+Comprobado contra el video, pasando sus 817 fotogramas por el detector y el seguidor:
+
+| Aspecto | Resultado |
+|---|---|
+| Roles | Los relevos coinciden con el video: la mano izquierda pasa a principal en el fotograma 316 |
+| Segunda mano presente | 56 de 58 lecturas; las otras dos son un adelanto de un cuarto de segundo |
+| Dedos de la principal | 48 de 58 lecturas |
+| Escala | Correlación 0.91 con la del video, error medio de 0.37 |
+
+De los 10 desajustes de dedos, 5 son adelantos (aquí el cambio se nota antes que en el texto del video) y 5
+son un tramo donde el video comprimido muestra el meñique doblado y el original contó 5.
+
+**Fórmula de la escala.** Se probaron 5184 medidas de la segunda mano. Ninguna reproduce el video con
+exactitud; la mejor entre las interpretables es la extensión de los dedos índice y medio (distancia de sus
+puntas a la muñeca, dividida por el tamaño de la mano), con correlación 0.91 a 0.94. La pinza da −0.16. El
+mapa a escala es lineal entre 1.30 (×0.35) y 2.00 (×3.2), y todo queda ajustable en `config`.
 
 ### Etapa 3. Figuras y transformación
 
 - `figuras.py`: las seis figuras como aristas 3D, remuestreo a 180 segmentos e interpolación.
 - Giro autónomo en dos ejes, proyección en perspectiva suave, posición sobre la palma con suavizado
   exponencial, colores interpolados.
-- Calibración de la fórmula de escala contra las 47 lecturas del video.
+- Suavizado de la escala en cada dibujo hacia el valor que entrega el seguidor.
 - Prueba: las seis figuras con 0 a 5 dedos, transformación en 0.4 s, escala con la segunda mano.
 
 ### Etapa 4. Halo, estela, textos y cierre
@@ -191,7 +211,8 @@ El ritmo de dibujo casi no cambia el consumo (probado a 30, 45 y 60 fps): lo que
   cuántas detecciones por segundo se envían; se decide con las mediciones de la etapa 4.
 - **Decaimiento de la estela:** el 0.82 por fotograma del PROMPT corresponde a unos 45 fps; se expresará de
   forma que no cambie de aspecto si se cambia `FPS_OBJETIVO`.
-- **Fórmula de escala:** la apertura explica la mayor parte, pero no todo. Se ajusta en la etapa 3.
+- **Fórmula de escala:** la extensión de índice y medio explica la mayor parte, pero no todo; puede que el
+  original use otra medida. Si al probarla no se siente como en el video, se cambia en `config`.
 - **Espejo:** el video no permite confirmarlo; queda activado por defecto y ajustable.
 - **Fuente del texto:** se usará una sans del sistema (Segoe UI en Windows) con respaldo en la fuente
   incluida en Pillow; el tamaño se ajusta comparando con el video.

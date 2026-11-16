@@ -13,7 +13,7 @@ import cv2
 
 import config
 from camara import Camara
-from manos import Detector
+from manos import Detector, Seguidor
 from render import Render
 
 
@@ -30,6 +30,22 @@ def _argumentos():
     return args.camara, ancho, alto
 
 
+def _estado_provisional(render, seguidor):
+    """Rótulos de diagnóstico de la etapa 2; los textos definitivos llegan con la etapa 4."""
+    principal, segunda = seguidor.principal, seguidor.segunda
+    for mano, rotulo in ((principal, "principal"), (segunda, "segunda")):
+        if mano is not None and mano.perdida == 0:
+            x, y = mano.puntos[0, 0] * render.ancho, mano.puntos[0, 1] * render.alto
+            render.texto_provisional(f"{rotulo} #{mano.id}: {mano.dedos}",
+                                     min(max(x - 50, 4), render.ancho - 150), min(y + 22, render.alto - 36))
+    if principal is None:
+        estado = "sin manos"
+    else:
+        estado = f"mano principal: {principal.dedos} | segunda mano: "
+        estado += "no" if segunda is None else f"escala x{seguidor.escala:.2f}"
+    render.texto_provisional(estado, 14, render.alto - 14)
+
+
 def main():
     indice, ancho, alto = _argumentos()
     detector = Detector()
@@ -41,12 +57,14 @@ def main():
     print(f"cámara {indice}: {camara.ancho}x{camara.alto} a {camara.fps:.0f} fps ({camara.backend})", flush=True)
 
     render = Render(ancho, alto)
+    seguidor = Seguidor(alto / ancho)
     cv2.namedWindow(config.TITULO, cv2.WINDOW_AUTOSIZE)
 
     # El dibujo lleva su propio reloj: cada vuelta usa el último fotograma que haya, sea nuevo o no.
     periodo = 1.0 / config.FPS_OBJETIVO
     siguiente = time.perf_counter()
     visto, ultima_senal = 0, siguiente
+    deteccion_vista = 0
     cuadros, capturas, resultados, peor = 0, 0, 0, 0.0
     reloj, cpu, anterior = siguiente, time.process_time(), siguiente
     try:
@@ -61,7 +79,16 @@ def main():
             elif ahora - ultima_senal > 3.0:
                 print("La cámara dejó de entregar fotogramas.")
                 break
-            render.esqueleto(detector.manos)
+
+            # El seguimiento avanza una vez por resultado del detector, no una vez por dibujo.
+            numero_deteccion, detecciones = detector.resultado
+            if numero_deteccion != deteccion_vista:
+                deteccion_vista = numero_deteccion
+                resultados += 1
+                seguidor.actualizar(detecciones)
+
+            render.esqueleto(seguidor.visibles)
+            _estado_provisional(render, seguidor)
             cv2.imshow(config.TITULO, render.lienzo)
 
             tecla = cv2.waitKey(1) & 0xFF
@@ -87,10 +114,10 @@ def main():
                 cpu_ahora = time.process_time()
                 print(f"{cuadros / lapso:5.1f} fps (peor intervalo {peor * 1000:4.1f} ms) · "
                       f"cámara {capturas / lapso:4.1f}/s · "
-                      f"detección {detector.ms:4.1f} ms ({(detector.resultados - resultados) / lapso:4.1f}/s) · "
-                      f"manos {len(detector.manos)} · cpu {(cpu_ahora - cpu) / lapso * 100:3.0f} % de un núcleo",
+                      f"detección {detector.ms:4.1f} ms ({resultados / lapso:4.1f}/s) · "
+                      f"manos {len(seguidor.visibles)} · cpu {(cpu_ahora - cpu) / lapso * 100:3.0f} % de un núcleo",
                       flush=True)
-                cuadros, capturas, resultados, peor = 0, 0, detector.resultados, 0.0
+                cuadros, capturas, resultados, peor = 0, 0, 0, 0.0
                 reloj, cpu = ahora, cpu_ahora
     except KeyboardInterrupt:
         pass
