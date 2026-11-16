@@ -1,0 +1,4 @@
+# cv2 (opencv-contrib-python) y numpy llegan como dependencias de mediapipe.
+# No instalar opencv-python aparte: provee el mismo módulo cv2 y entra en conflicto.
+mediapipe==1.2.3
+pillow==13.0.0
