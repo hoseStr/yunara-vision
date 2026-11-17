@@ -43,6 +43,10 @@ ESCALA_MEDIDA = "apertura"
 ESCALA_DEDOS = (8, 12)  # puntas del índice y del medio
 ESCALA_APERTURA = (1.30, 2.00)  # medida que da ESCALA_MIN y medida que da ESCALA_MAX
 ESCALA_PINZA = (0.30, 2.00)
+# Una lectura que pasa del tope del mapa por más de este factor se descarta y la escala no cambia.
+# Solo ocurre con detecciones deformadas (mano cortada por el borde o movida): en el video, el 95 % de
+# las lecturas no pasa de 2.02 y todas las que superan 2.2 son de ese tipo.
+ESCALA_DESCARTE = 1.12
 
 # --- Figura ---
 # Color por número de dedos, de 0 a 5: anillo, segmento, cuadrado, prisma triangular, cubo y

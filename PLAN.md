@@ -276,9 +276,21 @@ todo lo demás.
   un núcleo, así que por ahora no se limita cuántas detecciones se envían.
 - **Fórmula de escala:** la extensión de índice y medio explica la mayor parte, pero no todo; puede que el
   original use otra medida. Si al probarla no se siente como en el video, se cambia en `config`.
-- **Segunda mano cortada por el borde:** en el fotograma 600 del video la segunda mano entra cortada por el
-  borde inferior, su medida salta a 10.7 (lo normal va de 1.3 a 2.0) y la escala se va al máximo, ×3.2,
-  cuando el original marca ×0.59. Pendiente de decidir si se ignoran las lecturas de manos que tocan el borde.
+- **Lecturas deformadas de la segunda mano (resuelto):** con la mano cortada por el borde o movida,
+  MediaPipe aplasta la palma, el tamaño de la mano se queda casi en nada y la medida se dispara (10.7 en el
+  fotograma 599), así que la escala saltaba a ×3.2. Exigir que los puntos estén dentro de la imagen no sirve:
+  en lecturas buenas la muñeca suele quedar justo debajo del borde (y entre 1.03 y 1.05), y en las malas los
+  puntos están dentro. Lo que sí las separa es el valor: en el video el 95 % de las lecturas no pasa de 2.02 y
+  todas las que superan 2.2 son deformadas. Ahora se descartan las lecturas que pasan del tope del mapa por
+  más de `ESCALA_DESCARTE` (1.12, o sea 2.24), y la escala se queda como estaba.
+
+  | Fotograma | Original | Antes | Ahora |
+  |---|---|---|---|
+  | 600 (mano cortada abajo) | ×0.59 | ×3.20 | ×0.35 |
+  | 737 (mano cortada abajo) | ×0.77 | ×3.20 | ×0.35 |
+  | 770 (mano movida) | ×1.20 | ×3.20 | ×1.52 |
+
+  El resto de los fotogramas comparados (200, 420, 760 y 775) no cambia.
 - **Espejo:** el video no permite confirmarlo; queda activado por defecto y ajustable.
 - **Fuente del texto:** Segoe UI en Windows; en otros sistemas se prueban las de `config.FUENTES` y, si no
   hay ninguna, la incluida en Pillow. Solo se probó en Windows.

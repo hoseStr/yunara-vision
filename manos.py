@@ -103,9 +103,24 @@ def medida_escala(p):
     return sum(_dist(p, punta, _MUNECA) for punta in config.ESCALA_DEDOS) / len(config.ESCALA_DEDOS) / tamano
 
 
+def _mapa_escala():
+    """Medida que da ESCALA_MIN y medida que da ESCALA_MAX."""
+    return config.ESCALA_PINZA if config.ESCALA_MEDIDA == "pinza" else config.ESCALA_APERTURA
+
+
+def medida_valida(medida):
+    """False si la medida es imposible para una mano real.
+
+    Una mano bien extendida da como mucho el tope del mapa. Mucho más solo sale de detecciones
+    deformadas: una mano cortada por el borde o movida, donde MediaPipe aplasta la palma y el tamaño
+    de la mano se queda casi en nada.
+    """
+    return medida <= _mapa_escala()[1] * config.ESCALA_DESCARTE
+
+
 def escala_desde(medida):
     """Lleva la medida a una escala entre ESCALA_MIN y ESCALA_MAX, de forma lineal y con topes."""
-    bajo, alto = config.ESCALA_PINZA if config.ESCALA_MEDIDA == "pinza" else config.ESCALA_APERTURA
+    bajo, alto = _mapa_escala()
     t = min(1.0, max(0.0, (medida - bajo) / (alto - bajo)))
     return config.ESCALA_MIN + t * (config.ESCALA_MAX - config.ESCALA_MIN)
 
@@ -193,4 +208,6 @@ class Seguidor:
 
         segunda = self.segunda
         if segunda is not None and segunda.perdida == 0:
-            self.escala = escala_desde(medida_escala(segunda.plano))
+            medida = medida_escala(segunda.plano)
+            if medida_valida(medida):  # si no, se conserva la escala anterior
+                self.escala = escala_desde(medida)
