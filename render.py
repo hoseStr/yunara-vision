@@ -36,6 +36,14 @@ class Render:
         if config.ESPEJO:
             cv2.flip(self.lienzo, 1, dst=self.lienzo)
 
+    def figura(self, segmentos, color):
+        """Aristas de la figura; `segmentos` viene en píxeles con forma (n, 2, 2)."""
+        grosor = max(1, round(config.ARISTA_GROSOR * self.ancho / 1280))
+        # Coordenadas con 4 bits de fracción: el giro lento no avanza a saltos de píxel.
+        puntos = np.rint(segmentos * 16).astype(np.int32)
+        cv2.polylines(self.lienzo, list(puntos), False, tuple(float(c) for c in color),
+                      grosor, cv2.LINE_AA, shift=4)
+
     def texto_provisional(self, texto, x, y):
         """Texto de diagnóstico mientras no existan los textos definitivos (solo ASCII)."""
         cv2.putText(self.lienzo, texto, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 0.5,

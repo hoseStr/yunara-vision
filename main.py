@@ -13,6 +13,7 @@ import cv2
 
 import config
 from camara import Camara
+from figuras import Figura
 from manos import Detector, Seguidor
 from render import Render
 
@@ -58,13 +59,14 @@ def main():
 
     render = Render(ancho, alto)
     seguidor = Seguidor(alto / ancho)
+    figura = Figura()
     cv2.namedWindow(config.TITULO, cv2.WINDOW_AUTOSIZE)
 
     # El dibujo lleva su propio reloj: cada vuelta usa el último fotograma que haya, sea nuevo o no.
     periodo = 1.0 / config.FPS_OBJETIVO
     siguiente = time.perf_counter()
     visto, ultima_senal = 0, siguiente
-    deteccion_vista = 0
+    deteccion_vista, dibujo_anterior = 0, siguiente
     cuadros, capturas, resultados, peor = 0, 0, 0, 0.0
     reloj, cpu, anterior = siguiente, time.process_time(), siguiente
     try:
@@ -88,6 +90,10 @@ def main():
                 seguidor.actualizar(detecciones)
 
             render.esqueleto(seguidor.visibles)
+            figura.avanzar(ahora - dibujo_anterior, seguidor.principal, seguidor.escala, ancho)
+            dibujo_anterior = ahora
+            if figura.centro is not None:
+                render.figura(figura.proyectar(ancho), figura.color)
             _estado_provisional(render, seguidor)
             cv2.imshow(config.TITULO, render.lienzo)
 

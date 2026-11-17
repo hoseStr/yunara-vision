@@ -119,9 +119,9 @@ está la mano, no la pinza.** Aun así queda variación sin explicar (la misma p
    de ventana.
 4. **Escala:** por defecto, extensión de los dedos índice y medio de la segunda mano; la pinza queda como
    fórmula alternativa en `config`.
-5. **Transformación entre figuras:** cada figura se remuestrea a 180 segmentos (mínimo común múltiplo de 4, 9,
-   12 y 15 aristas, así cada arista se parte en trozos enteros) y se interpola segmento a segmento con
-   suavizado. El anillo y el segmento usan los mismos 180.
+5. **Transformación entre figuras:** cada figura se describe con 180 segmentos y se interpola segmento a
+   segmento con suavizado. Son tres tramos de 60 (base, tapa y uniones), y 60 se divide en partes enteras
+   entre 3, 4 y 5 lados.
 6. **Estela y halo:** búfer de estela a resolución completa (decaimiento y luego aristas nuevas); el halo sale
    de ese búfer reducido a 1/4, desenfocado y reescalado; ambos se suman a la cámara atenuada.
 7. **Texto:** Pillow dibuja cada cadena una vez en un parche pequeño, que se guarda y se mezcla solo en su
@@ -187,13 +187,31 @@ exactitud; la mejor entre las interpretables es la extensión de los dedos índi
 puntas a la muñeca, dividida por el tamaño de la mano), con correlación 0.91 a 0.94. La pinza da −0.16. El
 mapa a escala es lineal entre 1.30 (×0.35) y 2.00 (×3.2), y todo queda ajustable en `config`.
 
-### Etapa 3. Figuras y transformación
+### Etapa 3. Figuras y transformación (hecha, falta tu revisión visual)
 
-- `figuras.py`: las seis figuras como aristas 3D, remuestreo a 180 segmentos e interpolación.
-- Giro autónomo en dos ejes, proyección en perspectiva suave, posición sobre la palma con suavizado
-  exponencial, colores interpolados.
-- Suavizado de la escala en cada dibujo hacia el valor que entrega el seguidor.
-- Prueba: las seis figuras con 0 a 5 dedos, transformación en 0.4 s, escala con la segunda mano.
+- `figuras.py`: las seis figuras como 180 segmentos 3D cada una, repartidos en tres tramos de 60: lazo de la
+  base, lazo de la tapa y aristas que los unen. En las figuras planas los dos lazos coinciden y las uniones
+  miden cero, así que un prisma se aplana al pasar a cuadrado o anillo, y el anillo se cierra al pasar a
+  segmento.
+- Transformación de 0.4 s con arranque y llegada suaves, de forma y color a la vez. Si los dedos cambian a
+  mitad de camino, parte de la forma que hubiera en ese momento, sin saltos.
+- Giro autónomo a 0.6 y 0.4 rad/s, proyección en perspectiva y suavizado de posición y escala que no depende
+  del ritmo de dibujo.
+- Sin manos, la figura vuelve al anillo y se queda en su última posición. Antes de que aparezca la primera
+  mano no se dibuja.
+- Las aristas son líneas simples de 3 px; el halo y la estela llegan en la etapa 4.
+
+Calibrado contra el video, localizando la figura original por su color en 264 fotogramas con la mano quieta:
+
+| Parámetro | PROMPT | Medido | Queda en |
+|---|---|---|---|
+| Separación sobre el centro de la palma | 1.6 tamaños de mano | 2.44 ± 0.13 | 2.4 |
+| Diámetro a ×1.0 | 18 % del ancho | 18.8 % (incluye el halo) | 18 % |
+| Desfase horizontal respecto a la palma | centrada | 0.000 ± 0.018 anchos | centrada |
+| Distancia de la cámara virtual | perspectiva suave | cara lejana al 60–69 % de la cercana | 1.8 diámetros |
+
+La separación es proporcional al tamaño de la mano (variación del 5 %), no una distancia fija en píxeles
+(variación del 12 %). El costo por dibujo es de 0.06 ms de cálculo y 0.67 ms de trazado.
 
 ### Etapa 4. Halo, estela, textos y cierre
 

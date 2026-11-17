@@ -9,6 +9,9 @@ CAMARA_FPS = 30
 ESPEJO = True  # vista tipo selfie
 TITULO = "Hand Figure"
 FPS_OBJETIVO = 45  # ritmo de dibujo, independiente del ritmo de la cámara
+# Los valores "por fotograma" (suavizado, estela) valen para este ritmo; si FPS_OBJETIVO cambia,
+# se convierten solos para que el aspecto no cambie.
+FPS_REFERENCIA = 45
 
 # --- Detección de manos ---
 MODELO = Path(__file__).parent / "modelos" / "hand_landmarker.task"
@@ -40,6 +43,19 @@ ESCALA_MEDIDA = "apertura"
 ESCALA_DEDOS = (8, 12)  # puntas del índice y del medio
 ESCALA_APERTURA = (1.30, 2.00)  # medida que da ESCALA_MIN y medida que da ESCALA_MAX
 ESCALA_PINZA = (0.30, 2.00)
+
+# --- Figura ---
+# Color por número de dedos, de 0 a 5: anillo, segmento, cuadrado, prisma triangular, cubo y
+# prisma pentagonal.
+FIGURA_COLORES = ("#DCEBFF", "#5CE6E0", "#55E6A5", "#F2E94E", "#FF9A4D", "#FF5FD0")
+FIGURA_DIAMETRO = 0.18  # diámetro de la base a escala x1.0, como fracción del ancho
+FIGURA_ALTURA = 2.4  # separación sobre el centro de la palma, en tamaños de mano (muñeca a nudillo medio)
+PRISMA_ALTURA = 0.707  # altura de los prismas respecto al diámetro de la base; 0.707 da un cubo exacto
+PERSPECTIVA_DISTANCIA = 1.8  # cámara virtual, en diámetros de figura; menor = perspectiva más marcada
+GIRO_VELOCIDAD = (0.6, 0.4)  # rad/s alrededor del eje vertical y del horizontal
+TRANSFORMACION_SEGUNDOS = 0.4
+SUAVIZADO = 0.25  # de posición y escala, por fotograma a FPS_REFERENCIA
+ARISTA_GROSOR = 3  # píxeles a 1280 de ancho
 
 # --- Esqueleto de la mano ---
 ESQUELETO_COLOR = (230, 240, 235)  # BGR

@@ -126,6 +126,7 @@ class Mano:
         # Mismos puntos con x e y en la misma unidad (anchos de imagen), para medir distancias.
         self.plano = puntos[:, :2] * (1.0, self._aspecto)
         self.centro = self.plano[list(_PALMA)].mean(axis=0)
+        self.tamano = _dist(self.plano, _MUNECA, _NUDILLO_MEDIO)
 
     def actualizar(self, puntos):
         self._colocar(puntos)
