@@ -15,7 +15,7 @@ sola ventana, sin navegador ni servidor.
 
 - La mano principal es la que lleva más tiempo en cuadro. Si sale, la otra toma su lugar.
 - La segunda mano controla la escala, de ×0.35 a ×3.2, según cuánto extiende los dedos índice y
-  medio. Al retirarla, la escala se queda en su último valor.
+  medio. Sin segunda mano, la figura tiene un tamaño pequeño fijo (×0.5, `ESCALA_SIN_SEGUNDA`).
 
 ## Instalación
 

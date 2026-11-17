@@ -35,7 +35,9 @@ PULGAR_MARGEN = 1.05  # punta del pulgar más lejos de la base del meñique que 
 # --- Escala con la segunda mano ---
 ESCALA_MIN = 0.35
 ESCALA_MAX = 3.2
-ESCALA_INICIAL = 1.0
+# Tamaño fijo mientras no hay segunda mano: al empezar, al retirarla o si la principal se pierde y la
+# otra pasa a serlo. Solo la segunda mano cambia el tamaño.
+ESCALA_SIN_SEGUNDA = 0.5
 # "apertura": qué tan extendidos están los dedos de ESCALA_DEDOS (lo que mejor encaja con el video).
 # "pinza": distancia entre las puntas del pulgar y el índice.
 # Las dos medidas se dividen por el tamaño de la mano (muñeca a nudillo del dedo medio).

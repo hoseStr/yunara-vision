@@ -78,7 +78,7 @@ class Figura:
         self.color = COLORES[0].copy()
         self._origen, self._color_origen, self._avance = self.segmentos, self.color, 1.0
         self.centro = None  # píxeles; None hasta que aparece la primera mano
-        self.escala = config.ESCALA_INICIAL
+        self.escala = config.ESCALA_SIN_SEGUNDA
         self._giro = np.zeros(2)
 
     def avanzar(self, dt, mano, escala, ancho):

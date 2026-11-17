@@ -170,7 +170,7 @@ class Seguidor:
         self._aspecto = aspecto  # alto / ancho de la imagen
         self._manos = []
         self._siguiente_id = 1
-        self.escala = config.ESCALA_INICIAL  # se conserva cuando la segunda mano sale
+        self.escala = config.ESCALA_SIN_SEGUNDA
 
     @property
     def principal(self):
@@ -206,8 +206,13 @@ class Seguidor:
                 self._manos.append(Mano(self._siguiente_id, puntos, self._aspecto))
                 self._siguiente_id += 1
 
+        # Solo la segunda mano cambia el tamaño; sin ella vuelve al tamaño fijo. Mientras está en su
+        # margen de tolerancia (perdida > 0) se conserva la escala, para que un parpadeo del detector
+        # no haga saltar la figura.
         segunda = self.segunda
-        if segunda is not None and segunda.perdida == 0:
+        if segunda is None:
+            self.escala = config.ESCALA_SIN_SEGUNDA
+        elif segunda.perdida == 0:
             medida = medida_escala(segunda.plano)
             if medida_valida(medida):  # si no, se conserva la escala anterior
                 self.escala = escala_desde(medida)

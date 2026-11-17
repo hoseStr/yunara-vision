@@ -169,7 +169,9 @@ El ritmo de dibujo casi no cambia el consumo (probado a 30, 45 y 60 fps): lo que
   Una mano se da por perdida tras 4 detecciones seguidas sin verla, para que un parpadeo del detector no
   cambie los roles.
 - Conteo de dedos con inercia de 4 detecciones iguales seguidas.
-- Escala con topes 0.35 y 3.2, que se conserva cuando la segunda mano sale.
+- Escala con topes 0.35 y 3.2. Al principio se conservaba cuando la segunda mano salía, como pedía el
+  PROMPT; después de la etapa 4 se cambió a pedido tuyo: sin segunda mano la figura vuelve a un tamaño
+  pequeño fijo (`ESCALA_SIN_SEGUNDA`, ×0.5) y solo la segunda mano cambia el tamaño.
 - Rótulos provisionales en pantalla (rol, identidad y dedos junto a cada mano, y una línea de estado).
 
 Comprobado contra el video, pasando sus 817 fotogramas por el detector y el seguidor:
