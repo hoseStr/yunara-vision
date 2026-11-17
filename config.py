@@ -57,6 +57,36 @@ TRANSFORMACION_SEGUNDOS = 0.4
 SUAVIZADO = 0.25  # de posición y escala, por fotograma a FPS_REFERENCIA
 ARISTA_GROSOR = 3  # píxeles a 1280 de ancho
 
+# --- Brillo y estela de la figura ---
+# La estela es un búfer que se apaga un poco en cada dibujo y recibe las aristas nuevas; el halo es
+# ese mismo búfer desenfocado. Los dos se suman a la cámara.
+ESTELA_DECAIMIENTO = 0.82  # por fotograma a FPS_REFERENCIA
+HALO_DESENFOQUE = 5  # sigma del desenfoque, en píxeles a 1280 de ancho
+HALO_INTENSIDAD = 0.45
+NUCLEO_BLANCO = 0.3  # cuánto se acerca al blanco la línea central de cada arista (0 a 1)
+
+# --- Escena ---
+BRILLO = 0.55  # brillo de la cámara en el centro
+TINTE = (1.00, 0.96, 0.88)  # ganancia por canal B, G, R: tinte frío leve
+VINETA_INICIO = 0.45  # distancia al centro donde empieza a oscurecer (0 centro, 1 esquina)
+VINETA_FUERZA = 0.45  # cuánto se oscurecen las esquinas respecto al centro
+
 # --- Esqueleto de la mano ---
 ESQUELETO_COLOR = (230, 240, 235)  # BGR
 ESQUELETO_OPACIDAD = 0.35
+
+# --- Textos ---
+TEXTO_AVISO = "Muestra la mano en cámara"
+TEXTO_ESTADO = "mano principal: {dedos} · segunda mano: {segunda} · {fps} fps"
+TEXTO_SEGUNDA_NO = "no"
+TEXTO_SEGUNDA_ESCALA = "escala ×{escala:.2f}"
+TEXTO_SOLO_FPS = "{fps} fps"  # estado cuando no hay manos
+# Se prueban en orden; si ninguna está, se usa la fuente incluida en Pillow.
+FUENTES = ("segoeui.ttf", "SFNS.ttf", "Helvetica.ttc", "DejaVuSans.ttf", "Arial.ttf")
+AVISO_TAMANO = 13  # píxeles a 1280 de ancho
+AVISO_COLOR = (255, 255, 255)  # BGR
+ESTADO_TAMANO = 12
+ESTADO_COLOR = (205, 205, 205)
+ESTADO_MARGEN = (14, 13)  # píxeles a 1280 de ancho: desde la izquierda, y desde abajo hasta la línea base
+ESTADO_PERIODO = 0.25  # segundos entre actualizaciones de la línea de estado
+TEXTO_SOMBRA = 0.6  # opacidad de la sombra oscura que separa el texto del fondo

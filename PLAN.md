@@ -122,8 +122,10 @@ está la mano, no la pinza.** Aun así queda variación sin explicar (la misma p
 5. **Transformación entre figuras:** cada figura se describe con 180 segmentos y se interpola segmento a
    segmento con suavizado. Son tres tramos de 60 (base, tapa y uniones), y 60 se divide en partes enteras
    entre 3, 4 y 5 lados.
-6. **Estela y halo:** búfer de estela a resolución completa (decaimiento y luego aristas nuevas); el halo sale
-   de ese búfer reducido a 1/4, desenfocado y reescalado; ambos se suman a la cámara atenuada.
+6. **Estela y halo:** búfer de estela a resolución completa (decaimiento y luego aristas nuevas) y una segunda
+   estela a 1/4 de resolución donde las aristas se dibujan directamente; el halo es esta última desenfocada y
+   reescalada. Ambas se suman a la cámara atenuada. (Al principio el halo salía de reducir la estela grande,
+   pero eso solo ya costaba 1.3 ms; ver etapa 4.)
 7. **Texto:** Pillow dibuja cada cadena una vez en un parche pequeño, que se guarda y se mezcla solo en su
    zona. El estado se regenera unas 4 veces por segundo, como en el video.
 8. **Modelo:** `modelos/hand_landmarker.task` va versionado en el repositorio para que `python main.py`
@@ -138,7 +140,7 @@ optimiza antes de seguir.
 
 `PLAN.md`, `requirements.txt`, `.gitignore`, modelo descargado, entorno verificado.
 
-### Etapa 1. Cámara, detección y esqueleto (hecha, falta tu revisión visual)
+### Etapa 1. Cámara, detección y esqueleto (hecha y revisada)
 
 - `config.py`: resoluciones, índice de cámara, espejo, ritmo de dibujo, umbrales, esqueleto.
 - `camara.py`: hilo de captura con selección de backend, comprobación de la resolución real y tres búferes
@@ -160,7 +162,7 @@ Medido con la cámara real a 1280×720:
 
 El ritmo de dibujo casi no cambia el consumo (probado a 30, 45 y 60 fps): lo que pesa es la detección.
 
-### Etapa 2. Dedos y roles (hecha, falta tu revisión visual)
+### Etapa 2. Dedos y roles (hecha y revisada)
 
 - `manos.py`: `Seguidor` mantiene la identidad de cada mano entre detecciones por cercanía de la palma. La
   más antigua es la principal y la siguiente es la segunda; si la principal se pierde, la otra toma su lugar.
@@ -187,7 +189,7 @@ exactitud; la mejor entre las interpretables es la extensión de los dedos índi
 puntas a la muñeca, dividida por el tamaño de la mano), con correlación 0.91 a 0.94. La pinza da −0.16. El
 mapa a escala es lineal entre 1.30 (×0.35) y 2.00 (×3.2), y todo queda ajustable en `config`.
 
-### Etapa 3. Figuras y transformación (hecha, falta tu revisión visual)
+### Etapa 3. Figuras y transformación (hecha y revisada)
 
 - `figuras.py`: las seis figuras como 180 segmentos 3D cada una, repartidos en tres tramos de 60: lazo de la
   base, lazo de la tapa y aristas que los unen. En las figuras planas los dos lazos coinciden y las uniones
@@ -213,24 +215,70 @@ Calibrado contra el video, localizando la figura original por su color en 264 fo
 La separación es proporcional al tamaño de la mano (variación del 5 %), no una distancia fija en píxeles
 (variación del 12 %). El costo por dibujo es de 0.06 ms de cálculo y 0.67 ms de trazado.
 
-### Etapa 4. Halo, estela, textos y cierre
+### Etapa 4. Halo, estela, textos y cierre (hecha, falta tu revisión visual)
 
-- Atenuación fría con viñeta, estela, halo aditivo, aviso sin manos y línea de estado.
-- Comportamiento sin manos: la figura se transforma en anillo en su última posición.
-- `README.md`: instalación, ejecución, ajuste de `config` y mediciones de fps, CPU y memoria.
-- Prueba: comparación lado a lado con fotogramas del video.
+- **Escena:** un mapa de ganancia precalculado aplica brillo al 55 %, tinte frío leve y viñeta en una sola
+  multiplicación. Se calcula solo cuando llega un fotograma nuevo de la cámara, no en cada dibujo. El detector
+  recibe la imagen sin atenuar.
+- **Estela:** decaimiento de 0.82 por fotograma a 45 fps, convertido según `FPS_OBJETIVO`. Se hace con
+  `addWeighted` restando además 1, no con `convertScaleAbs`: este redondea y deja para siempre valores de 1 y 2
+  (comprobado: tras 200 pasos quedaban), que serían fantasmas permanentes. Restando 1, todo llega a cero en 20
+  pasos.
+- **Solo donde hay figura:** se guardan los rectángulos de las aristas de los últimos 21 dibujos (lo que tarda en
+  apagarse un píxel) y el decaimiento, el halo y las sumas trabajan solo en su unión.
+- **Aristas:** los segmentos que se tocan se unen en polilíneas y se descartan los de menos de medio píxel (las
+  uniones de las figuras planas miden cero). Encima va un núcleo de 1 px aclarado hacia el blanco.
+- **Textos:** Pillow rasteriza cada cadena una vez con una sombra suave, y se guarda lista para mezclar en su
+  rectángulo. La línea de estado se renueva 4 veces por segundo, con los fps de dibujo suavizados. Se quitaron
+  los rótulos provisionales.
+- **Hilos de OpenCV:** `cv2.setNumThreads(1)` en `main.py`. OpenCV reparte cada operación entre los 12 hilos, y
+  en zonas pequeñas como la de la figura los hilos pasan más tiempo esperando que trabajando.
+
+Calibrado contra el video (franja de la demo en las filas 455 a 858 de la grabación, llevada a 1280×720):
+
+| Aspecto | Video | Queda en |
+|---|---|---|
+| Halo | Unos +10 a 15 de brillo a pocos píxeles de la arista | Desenfoque de 5 px, intensidad 0.45 |
+| Núcleo de la arista | Más blanco que el color de la figura | 30 % hacia el blanco |
+| Aviso | Mayúsculas de unos 9.5 px, centrado en x = 640, y = 361 | Segoe UI de 13 px, centrado en el medio |
+| Línea de estado | Altura de cifras de unos 8.5 px, empieza en x = 14, línea base a 13 px del borde | Segoe UI de 12 px en (14, alto − 13) |
+| Sombra del texto | Borde oscuro alrededor de las letras | Sombra desenfocada de opacidad 0.6 |
+| Viñeta | Perfil radial plano hasta el 70 % y caída a dos tercios en las esquinas | Empieza en el 45 %, esquinas al 55 % del centro |
+
+El aviso está centrado en vertical, no "un poco por encima" como decía el PROMPT. Se siguió la medición.
+
+Costo del dibujo, reproduciendo las figuras de los 817 fotogramas del video:
+
+| Versión | Tiempo real | CPU |
+|---|---|---|
+| Halo reduciendo la estela grande, 12 hilos | 3.0 ms | no medido |
+| Estela chica y polilíneas unidas, 12 hilos | 1.7 ms (3.2 con fondo y texto) | 11.4 ms |
+| Lo mismo con un hilo | 3.1 ms con fondo y texto | 3.1 ms |
+
+Medido en la aplicación con la cámara real a 1280×720, con manos en cuadro, alternando versiones dos veces:
+
+| Medida | Etapa 3 | Etapa 4 |
+|---|---|---|
+| Ritmo de dibujo | 45.0 fps | 45.0 fps, peor intervalo 22.6 a 24.4 ms |
+| CPU del proceso | 128 a 131 % de un núcleo | 77 a 79 % de media (entre 60 y 102 %) |
+| Detección | 21 a 27 ms | 20 a 25 ms |
+| Memoria | (205 a 212 MB en la etapa 1) | 227 a 229 MB |
+
+La etapa 4 gasta menos que la 3 aunque añade estela, halo y textos, porque el ajuste de hilos también abarata
+todo lo demás.
 
 ## 4. Pendientes y riesgos
 
 - **Fps de la cámara:** la imagen de fondo se renueva unas 24 veces por segundo aunque la figura se dibuje a
   45. Puede deberse a la exposición automática con poca luz o al ajuste antiparpadeo de la cámara; no se
   controla desde OpenCV.
-- **Consumo de la detección:** es casi todo el gasto de CPU. Si hiciera falta bajarlo, la opción es limitar
-  cuántas detecciones por segundo se envían; se decide con las mediciones de la etapa 4.
-- **Decaimiento de la estela:** el 0.82 por fotograma del PROMPT corresponde a unos 45 fps; se expresará de
-  forma que no cambie de aspecto si se cambia `FPS_OBJETIVO`.
+- **Consumo de la detección:** es casi todo el gasto de CPU. Con la etapa 4 el proceso queda en unos 80 % de
+  un núcleo, así que por ahora no se limita cuántas detecciones se envían.
 - **Fórmula de escala:** la extensión de índice y medio explica la mayor parte, pero no todo; puede que el
   original use otra medida. Si al probarla no se siente como en el video, se cambia en `config`.
+- **Segunda mano cortada por el borde:** en el fotograma 600 del video la segunda mano entra cortada por el
+  borde inferior, su medida salta a 10.7 (lo normal va de 1.3 a 2.0) y la escala se va al máximo, ×3.2,
+  cuando el original marca ×0.59. Pendiente de decidir si se ignoran las lecturas de manos que tocan el borde.
 - **Espejo:** el video no permite confirmarlo; queda activado por defecto y ajustable.
-- **Fuente del texto:** se usará una sans del sistema (Segoe UI en Windows) con respaldo en la fuente
-  incluida en Pillow; el tamaño se ajusta comparando con el video.
+- **Fuente del texto:** Segoe UI en Windows; en otros sistemas se prueban las de `config.FUENTES` y, si no
+  hay ninguna, la incluida en Pillow. Solo se probó en Windows.

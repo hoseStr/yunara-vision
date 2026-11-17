@@ -11,6 +11,11 @@ import time
 
 import cv2
 
+# OpenCV reparte cada operación entre todos los núcleos, y en zonas pequeñas como la de la figura los
+# hilos pasan más tiempo esperando que trabajando: medido, 11.4 ms de CPU por dibujo frente a 3.1 con
+# un solo hilo, sin diferencia en el tiempo real. La detección de MediaPipe usa sus propios hilos.
+cv2.setNumThreads(1)
+
 import config
 from camara import Camara
 from figuras import Figura
@@ -31,20 +36,13 @@ def _argumentos():
     return args.camara, ancho, alto
 
 
-def _estado_provisional(render, seguidor):
-    """Rótulos de diagnóstico de la etapa 2; los textos definitivos llegan con la etapa 4."""
-    principal, segunda = seguidor.principal, seguidor.segunda
-    for mano, rotulo in ((principal, "principal"), (segunda, "segunda")):
-        if mano is not None and mano.perdida == 0:
-            x, y = mano.puntos[0, 0] * render.ancho, mano.puntos[0, 1] * render.alto
-            render.texto_provisional(f"{rotulo} #{mano.id}: {mano.dedos}",
-                                     min(max(x - 50, 4), render.ancho - 150), min(y + 22, render.alto - 36))
-    if principal is None:
-        estado = "sin manos"
-    else:
-        estado = f"mano principal: {principal.dedos} | segunda mano: "
-        estado += "no" if segunda is None else f"escala x{seguidor.escala:.2f}"
-    render.texto_provisional(estado, 14, render.alto - 14)
+def _texto_estado(seguidor, fps):
+    fps = round(fps)
+    if seguidor.principal is None:
+        return config.TEXTO_SOLO_FPS.format(fps=fps)
+    segunda = (config.TEXTO_SEGUNDA_NO if seguidor.segunda is None
+               else config.TEXTO_SEGUNDA_ESCALA.format(escala=seguidor.escala))
+    return config.TEXTO_ESTADO.format(dedos=seguidor.principal.dedos, segunda=segunda, fps=fps)
 
 
 def main():
@@ -69,18 +67,21 @@ def main():
     deteccion_vista, dibujo_anterior = 0, siguiente
     cuadros, capturas, resultados, peor = 0, 0, 0, 0.0
     reloj, cpu, anterior = siguiente, time.process_time(), siguiente
+    intervalo = periodo  # entre dibujos, suavizado: da los fps que se muestran
+    estado, siguiente_estado = "", siguiente
     try:
         while True:
             fotograma, numero = camara.leer()
             ahora = time.perf_counter()
-            render.fondo(fotograma)
             if numero != visto:
                 visto, ultima_senal = numero, ahora
                 capturas += 1
-                detector.enviar(render.lienzo)
+                # El detector recibe la imagen sin atenuar; la atenuación es solo para la vista.
+                detector.enviar(render.camara(fotograma))
             elif ahora - ultima_senal > 3.0:
                 print("La cámara dejó de entregar fotogramas.")
                 break
+            render.fondo()
 
             # El seguimiento avanza una vez por resultado del detector, no una vez por dibujo.
             numero_deteccion, detecciones = detector.resultado
@@ -94,7 +95,12 @@ def main():
             dibujo_anterior = ahora
             if figura.centro is not None:
                 render.figura(figura.proyectar(ancho), figura.color)
-            _estado_provisional(render, seguidor)
+            if seguidor.principal is None:
+                render.aviso(config.TEXTO_AVISO)
+            # Como en el original, el estado cambia a saltos unas 4 veces por segundo.
+            if ahora >= siguiente_estado:
+                estado, siguiente_estado = _texto_estado(seguidor, 1 / intervalo), ahora + config.ESTADO_PERIODO
+            render.estado(estado)
             cv2.imshow(config.TITULO, render.lienzo)
 
             tecla = cv2.waitKey(1) & 0xFF
@@ -114,6 +120,7 @@ def main():
             ahora = time.perf_counter()
             cuadros += 1
             peor = max(peor, ahora - anterior)
+            intervalo += (ahora - anterior - intervalo) * 0.05
             anterior = ahora
             if ahora - reloj >= 1.0:
                 lapso = ahora - reloj
