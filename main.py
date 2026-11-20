@@ -56,6 +56,14 @@ def main():
     print(f"cámara {indice}: {camara.ancho}x{camara.alto} a {camara.fps:.0f} fps ({camara.backend})", flush=True)
 
     render = Render(ancho, alto)
+    gpu = None
+    if config.RENDER_CUENTAS == "gpu":
+        try:
+            from render_gpu import RenderGPU
+            gpu = RenderGPU(ancho, alto)
+            print(f"cuentas en GPU: {gpu.descripcion}", flush=True)
+        except Exception as error:  # sin GPU utilizable, el dibujo en CPU sigue funcionando
+            print(f"No se pudo usar la GPU ({error}); las cuentas se dibujan en CPU.", flush=True)
     preparador = Preparador()
     seguidor = Seguidor(alto / ancho)
     cuerpo = Cuerpo(alto / ancho)
@@ -102,7 +110,12 @@ def main():
             cuentas.avanzar(ahora - dibujo_anterior, cuerpo, ancho)
             dibujo_anterior = ahora
             if cuentas.centro is not None:
-                render.cuentas(cuentas.proyectar(), cuerpo.mascara, cuentas.opacidad)
+                if gpu is not None:
+                    capa = gpu.dibujar(cuentas.escena(), cuerpo.mascara, cuentas.opacidad)
+                    if capa is not None:
+                        render.capa(*capa)
+                else:
+                    render.cuentas(cuentas.proyectar(), cuerpo.mascara, cuentas.opacidad)
             if not cuerpo.visible:
                 render.aviso(config.TEXTO_AVISO)
             # Como en el original, el estado cambia a saltos unas 4 veces por segundo.
@@ -147,6 +160,8 @@ def main():
         camara.cerrar()
         detector_manos.cerrar()
         detector_cuerpo.cerrar()
+        if gpu is not None:
+            gpu.cerrar()
         cv2.destroyAllWindows()
 
 

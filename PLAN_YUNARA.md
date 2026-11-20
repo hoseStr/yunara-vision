@@ -19,7 +19,7 @@ Pedido: las cuentas giran alrededor del cuello. Primero esferas básicas, despu�
 
 ## Etapas
 
-### Etapa 1. Esferas alrededor del cuello (hecha, falta tu revisión)
+### Etapa 1. Esferas alrededor del cuello (hecha)
 
 - `deteccion.py`: base común de los detectores. La imagen se reduce a 640×360 una sola vez y va a los
   dos. Se corrigió además que una respuesta tardía del detector lo marcara como libre con un envío
@@ -48,19 +48,38 @@ Medido:
 La primera versión del dibujo mezclaba en float con numpy y costaba 5.1 ms. Ahora mezcla en uint8 con
 OpenCV y reduce una esfera maestra en vez de calcular cada tamaño.
 
-### Etapa 2. Modelo 3D de las cuentas
+### Etapa 2. Modelo 3D de las cuentas en GPU (hecha, falta tu revisión)
 
-Sustituir la esfera por la cuenta real: relieves, tachuelas, giro propio de cada cuenta e iluminación.
-Lo primero es decidir el renderizado:
+Mirando de cerca las cuentas de `yunara.png`: bronce pálido, tachuelas de acero gris que sobresalen del
+contorno con un collar de bronce, líneas grabadas y medialunas anchas color carbón (dos o tres por lado).
 
-- **Sprites precalculados:** se renderiza el modelo en varios ángulos una sola vez y se dibuja como hoy.
-  Sigue todo en CPU, pero el giro propio queda limitado a los ángulos guardados.
-- **GPU (moderngl) fuera de pantalla:** las 6 cuentas como mallas iluminadas, renderizadas en una capa
-  con transparencia y compuestas sobre la cámara. Es lo más realista, pero añade una dependencia y la
-  GPU.
+- `modelo_cuenta.py`: la cuenta se genera en código sobre una esfera geodésica de 40962 vértices. El
+  relieve es desplazamiento real: 12 tachuelas en los vértices de un icosaedro, collar, línea grabada y
+  una medialuna por cada par de tachuelas opuestas, medida desde su propia tachuela para que no se corte.
+  Cada vértice lleva su material (oscuro, acero). Se genera en 0.1 s al arrancar.
+- `render_gpu.py`: moderngl con contexto sin ventana. Las 6 cuentas van en una sola llamada instanciada,
+  con 4 muestras por píxel. Luz metálica con reflejo de Fresnel, luz principal cálida, relleno frío y
+  reflejo de un entorno simple; las medialunas son pintura mate. El aura es un cuadrado de frente a la
+  cámara que se suma. La oclusión ahora es por píxel: la silueta se sube como textura y tapa cada punto
+  según su profundidad, así una cuenta medio detrás queda medio tapada.
+- Las cuentas giran además sobre sí mismas (`CUENTA_GIRO_PROPIO`).
+- Si la GPU no arranca, se usa el dibujo en CPU de la etapa 1 (`RENDER_CUENTAS`).
 
-Falta el modelo: un `.glb`/`.obj` que consigas o hagas tú, o uno modelado en código (esfera con relieves
-y tachuelas). No se extraen modelos del cliente del juego.
+Rendimiento: medido aislado, el dibujo tardaba 1.7 ms, pero dentro del bucle tardaba entre 5 y 10 ms.
+Había dos causas:
+
+| Causa | Arreglo | Efecto |
+|---|---|---|
+| Malla de 163842 vértices | 40962: a tamaño real ya hay menos de un píxel por triángulo | 1.7 → 0.7 ms aislado |
+| La CPU esperaba a la GPU para leer, y la GPU se enfría entre dibujos | Lectura asíncrona con dos búferes: cada dibujo recoge el anterior (un dibujo de atraso, 22 ms) | 6.3 → 1.3 ms en el bucle, con la mezcla |
+
+Medido con la cámara real a 1280×720:
+
+| Medida | Valor |
+|---|---|
+| Ritmo de dibujo | 45 fps, peor intervalo 22.7 ms |
+| CPU, GPU frente a CPU, alternando dos veces | 102 y 107 % frente a 100 y 106 % de un núcleo: la GPU no añade carga |
+| Memoria | 368 MB (contexto de GPU y modelo de pose incluidos) |
 
 ### Etapa 3. Mover las cuentas con las manos
 
@@ -71,6 +90,6 @@ segunda mano no se usa hoy).
 ## Pendientes
 
 - Ajustar a ojo el tamaño, la altura y la inclinación del anillo con tu cámara (`config.py`, sección
-  "Cuentas").
+  "Cuentas"), y el aspecto de la cuenta (secciones "Modelo 3D de la cuenta" y "Aspecto de las cuentas").
 - Con la oclusión, la silueta llega con un poco de retraso: si te mueves rápido, el borde de una cuenta
   de atrás puede verse un instante sobre la cara.

@@ -4,12 +4,12 @@ Las cuentas de Yunara (League of Legends) giran alrededor de tu cuello en la ima
 Es una aplicación nativa de escritorio en Python: una sola ventana, sin navegador ni servidor.
 Proyecto de fans para uso personal.
 
-- Seis cuentas de bronce con aura violeta forman un anillo inclinado que gira alrededor del cuello.
+- Seis cuentas de bronce con tachuelas de acero y aura violeta forman un anillo inclinado que gira
+  alrededor del cuello. Son modelos 3D generados en código y dibujados con la GPU (moderngl).
 - El anillo sigue tu posición, tu distancia a la cámara y la inclinación de los hombros.
 - Las cuentas que pasan por detrás quedan tapadas por tu silueta.
 
-Por ahora las cuentas son esferas; el modelo 3D y el control con las manos vienen después
-(ver `PLAN_YUNARA.md`).
+El control con las manos viene después (ver `PLAN_YUNARA.md`).
 
 ## Instalación
 
@@ -48,7 +48,9 @@ Todos los valores ajustables están en `config.py`, agrupados por tema:
 | Detección | Modelos, resolución de detección y umbrales de confianza |
 | Cuerpo y cuello | Dónde se coloca el cuello entre hombros y boca, y la oclusión |
 | Cuentas | Número, radio del anillo, tamaño, inclinación, giro, flote y suavizado |
-| Aspecto de las cuentas | Color del bronce, luz, brillo y aura violeta |
+| Dibujo de las cuentas | GPU o CPU, suavizado de bordes y giro propio de cada cuenta |
+| Modelo 3D de la cuenta | Tachuelas, collar, líneas grabadas y medialunas |
+| Aspecto de las cuentas | Colores del bronce, el acero y las medialunas, luces y aura violeta |
 | Escena | Brillo de la cámara, tinte frío y viñeta |
 | Textos | Cadenas, fuentes, tamaños y colores |
 
@@ -57,15 +59,16 @@ Las medidas del anillo van en anchos de hombros, así que no dependen de la dist
 ## Rendimiento
 
 Medido el 2026-11-19 con la cámara real a 1280×720, en un Ryzen 5 5600X (6 núcleos, 12 hilos) con
-16 GB y Windows 11:
+16 GB, una RTX 4060 y Windows 11:
 
 | Medida | Valor |
 |---|---|
 | Ritmo de dibujo | 45 fps estables, peor intervalo 22.7 ms (ideal 22.2) |
 | Detección de cuerpo | Entre 13 y 16 ms por fotograma, en un hilo aparte |
 | Detección de manos | Entre 12 y 15 ms por fotograma, en un hilo aparte |
-| Dibujo de las cuentas | Menos de 1 ms por fotograma |
-| CPU | Entre 83 y 120 % de un núcleo (de 12 hilos disponibles) |
+| Dibujo de las cuentas | 1.3 ms por fotograma en GPU, contando la lectura y la mezcla |
+| CPU | Entre 90 y 150 % de un núcleo (de 12 hilos disponibles); igual con GPU o CPU |
+| Memoria | Unos 370 MB |
 
 ## Archivos
 
@@ -76,8 +79,10 @@ Medido el 2026-11-19 con la cámara real a 1280×720, en un Ryzen 5 5600X (6 nú
 | `deteccion.py` | Base de los detectores de MediaPipe: envío asíncrono y reducción compartida |
 | `cuerpo.py` | Detección del cuerpo, posición del cuello y silueta |
 | `cuentas.py` | Anillo de cuentas: giro, flote, inclinación y perspectiva |
+| `modelo_cuenta.py` | Malla 3D de la cuenta, generada en código |
+| `render_gpu.py` | Cuentas en 3D con moderngl, con aura y oclusión |
 | `manos.py` | Detección de manos, identidad, roles y conteo de dedos (para los gestos) |
-| `render.py` | Cámara atenuada, esqueleto de las manos, cuentas con aura y oclusión, textos |
+| `render.py` | Cámara atenuada, esqueleto de las manos, mezcla de la capa de la GPU (o cuentas planas en CPU), textos |
 | `config.py` | Todos los valores ajustables |
 | `PLAN_YUNARA.md` | Plan, mediciones y decisiones de este proyecto |
 | `PLAN.md` | Mediciones y decisiones del proyecto base (Hand Figure) |

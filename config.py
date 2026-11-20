@@ -74,19 +74,49 @@ PERSPECTIVA_DISTANCIA = 3.0  # cámara virtual; menor = perspectiva más marcada
 SUAVIZADO = 0.25  # de posición, tamaño e inclinación, por fotograma a FPS_REFERENCIA
 FUNDIDO_SEGUNDOS = 0.3  # aparecer y desvanecerse con la persona
 
-# --- Aspecto de las cuentas (esferas provisionales hasta el modelo 3D) ---
-CUENTA_COLOR = "#8E6B40"  # bronce
+# --- Dibujo de las cuentas ---
+# "gpu": modelo 3D iluminado con moderngl. "cpu": esferas planas, sin GPU. Si la GPU no arranca, se
+# usa "cpu" y se avisa en la consola.
+RENDER_CUENTAS = "gpu"
+GPU_MUESTRAS = 4  # muestras por píxel para suavizar los bordes
+CUENTA_GIRO_PROPIO = 0.5  # rad/s; cada cuenta gira sobre sí misma alrededor de un eje propio
+
+# --- Modelo 3D de la cuenta (ángulos en radianes, alturas en radios de cuenta) ---
+CUENTA_SUBDIVISIONES = 6  # esfera geodésica: 6 da 40962 vértices, menos de un píxel por triángulo a tamaño real
+TACHUELA_RADIO = 0.17  # 12 tachuelas de acero repartidas por igual
+TACHUELA_ALTURA = 0.12  # sobresalen del contorno, como en las referencias
+COLLAR_ANCHO = 0.035  # medio ancho del collar de bronce alrededor de cada tachuela
+COLLAR_ALTURA = 0.025
+LINEA_ANCHO = 0.012  # medio ancho de la línea grabada alrededor del collar
+LINEA_PROFUNDIDAD = 0.012
+MEDIALUNA_ANCHO = 0.11  # medio ancho de la medialuna en su parte más gruesa
+MEDIALUNA_LARGO = 0.42 # fracción de vuelta que recorre alrededor de su tachuela
+MEDIALUNA_SEPARACION = 0.17 # distancia entre el collar y el centro de la medialuna al arrancar
+MEDIALUNA_APERTURA = 0.30 # cuánto se aleja de la tachuela por vuelta
+MEDIALUNA_PROFUNDIDAD = 0.006
+
+# --- Aspecto de las cuentas ---
+CUENTA_COLOR = "#B8A27A"  # bronce pálido
+TACHUELA_COLOR = "#A3A89C"  # acero
+OSCURO_COLOR = "#4A4548"  # medialunas y grabados, color carbón
 LUZ_DIRECCION = (-0.45, -0.65, 0.6)  # x derecha, y abajo, z hacia la cámara: luz arriba a la izquierda
+LUZ_COLOR = "#FFF1DC"
+RELLENO_DIRECCION = (0.8, 0.3, 0.5)  # luz de relleno, fría, desde la derecha (solo GPU)
+RELLENO_COLOR = "#5E5870"
+ENTORNO_CIELO = "#B49C80"  # lo que reflejan las cuentas arriba y abajo (solo GPU)
+ENTORNO_SUELO = "#1C1619"
+# Solo en CPU:
 LUZ_AMBIENTE = 0.28
 LUZ_DIFUSA = 0.95
 BRILLO_COLOR = "#FFE8C8"
 BRILLO_INTENSIDAD = 0.55
 BRILLO_EXPONENTE = 24
+# Aura:
 AURA_COLOR = "#9A70FF"  # violeta tenue alrededor de cada cuenta
 AURA_INTENSIDAD = 0.35
 AURA_ANCHO = 0.22  # caída del aura, en radios de cuenta
-AURA_ALCANCE = 0.5  # el sprite mide (1 + esto) diámetros: esto en radios a cada lado (a 0.22 de caída ya no se ve)
-AURA_BORDE = 0.35  # reflejo violeta en el contorno de la esfera
+AURA_ALCANCE = 0.5  # el aura se dibuja hasta (1 + esto) radios del centro; a 0.22 de caída ya no se ve
+AURA_BORDE = 0.15  # reflejo violeta en el contorno de la cuenta
 
 # --- Escena ---
 BRILLO = 0.55  # brillo de la cámara en el centro

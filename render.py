@@ -201,6 +201,15 @@ class Render:
             cv2.multiply(zona, conserva, dst=zona, scale=1 / 255)
             cv2.add(zona, tinta, dst=zona)
 
+    def capa(self, x0, y0, bgra):
+        """Mezcla sobre el lienzo, en (x0, y0), una capa BGRA con el color ya multiplicado por la
+        opacidad (la que devuelve `RenderGPU.dibujar`)."""
+        alto, ancho = bgra.shape[:2]
+        zona = self.lienzo[y0:y0 + alto, x0:x0 + ancho]
+        conserva = cv2.cvtColor(cv2.bitwise_not(cv2.extractChannel(bgra, 3)), cv2.COLOR_GRAY2BGR)
+        cv2.multiply(zona, conserva, dst=zona, scale=1 / 255)
+        cv2.add(zona, cv2.cvtColor(bgra, cv2.COLOR_BGRA2BGR), dst=zona)
+
     # --- Textos ---
 
     def aviso(self, texto):
