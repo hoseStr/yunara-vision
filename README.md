@@ -9,7 +9,17 @@ Proyecto de fans para uso personal.
 - El anillo sigue tu posición, tu distancia a la cámara y la inclinación de los hombros.
 - Las cuentas que pasan por detrás quedan tapadas por tu silueta.
 
-El control con las manos viene después (ver `PLAN_YUNARA.md`).
+## Gestos
+
+Con cualquiera de las dos manos:
+
+| Gesto | Efecto |
+|---|---|
+| Pinza (pulgar e índice juntos) cerca de una cuenta | La agarras y la arrastras |
+| Soltar la pinza despacio | Regresa al cuello |
+| Soltar la pinza moviendo la mano rápido | La lanzas: vuela, frena y regresa |
+| Palma abierta sostenida medio segundo | Las cuentas vuelan a tu mano y giran a su alrededor |
+| Puño con la mano que las convocó | Regresan al cuello |
 
 ## Instalación
 
@@ -36,7 +46,7 @@ python main.py --camara 1 --resolucion 1920x1080
 
 Se sale con `q`, `Esc` o cerrando la ventana. Una vez por segundo la consola muestra los fps de
 dibujo, los fotogramas por segundo que entrega la cámara, el tiempo de cada detector, si encuentra el
-cuello y el uso de CPU.
+cuello, cuántas cuentas hay en cada estado y el uso de CPU.
 
 ## Ajustes
 
@@ -47,7 +57,9 @@ Todos los valores ajustables están en `config.py`, agrupados por tema:
 | Ventana y cámara | Resolución, índice de cámara, espejo, ritmo de dibujo (`FPS_OBJETIVO`) |
 | Detección | Modelos, resolución de detección y umbrales de confianza |
 | Cuerpo y cuello | Dónde se coloca el cuello entre hombros y boca, y la oclusión |
+| Gestos | Umbrales de la pinza, alcance para agarrar y tiempo de palma abierta para convocar |
 | Cuentas | Número, radio del anillo, tamaño, inclinación, giro, flote y suavizado |
+| Movimiento de las cuentas | Rigidez de cada estado, anillo de la mano, lanzamiento y aura de las que manejas |
 | Dibujo de las cuentas | GPU o CPU, suavizado de bordes y giro propio de cada cuenta |
 | Modelo 3D de la cuenta | Tachuelas, collar, líneas grabadas y medialunas |
 | Aspecto de las cuentas | Colores del bronce, el acero y las medialunas, luces y aura violeta |
@@ -67,7 +79,7 @@ Medido el 2026-11-19 con la cámara real a 1280×720, en un Ryzen 5 5600X (6 nú
 | Detección de cuerpo | Entre 13 y 16 ms por fotograma, en un hilo aparte |
 | Detección de manos | Entre 12 y 15 ms por fotograma, en un hilo aparte |
 | Dibujo de las cuentas | 1.3 ms por fotograma en GPU, contando la lectura y la mezcla |
-| CPU | Entre 90 y 150 % de un núcleo (de 12 hilos disponibles); igual con GPU o CPU |
+| CPU | Entre 110 y 150 % de un núcleo (de 12 hilos disponibles); igual con GPU o CPU |
 | Memoria | Unos 370 MB |
 
 ## Archivos
@@ -78,10 +90,10 @@ Medido el 2026-11-19 con la cámara real a 1280×720, en un Ryzen 5 5600X (6 nú
 | `camara.py` | Captura en un hilo aparte que conserva solo el último fotograma |
 | `deteccion.py` | Base de los detectores de MediaPipe: envío asíncrono y reducción compartida |
 | `cuerpo.py` | Detección del cuerpo, posición del cuello y silueta |
-| `cuentas.py` | Anillo de cuentas: giro, flote, inclinación y perspectiva |
+| `cuentas.py` | Cuentas: anillo del cuello, gestos, estados y física de resortes |
 | `modelo_cuenta.py` | Malla 3D de la cuenta, generada en código |
 | `render_gpu.py` | Cuentas en 3D con moderngl, con aura y oclusión |
-| `manos.py` | Detección de manos, identidad, roles y conteo de dedos (para los gestos) |
+| `manos.py` | Detección de manos, identidad, conteo de dedos, pinza y palma abierta |
 | `render.py` | Cámara atenuada, esqueleto de las manos, mezcla de la capa de la GPU (o cuentas planas en CPU), textos |
 | `config.py` | Todos los valores ajustables |
 | `PLAN_YUNARA.md` | Plan, mediciones y decisiones de este proyecto |

@@ -48,7 +48,7 @@ Medido:
 La primera versión del dibujo mezclaba en float con numpy y costaba 5.1 ms. Ahora mezcla en uint8 con
 OpenCV y reduce una esfera maestra en vez de calcular cada tamaño.
 
-### Etapa 2. Modelo 3D de las cuentas en GPU (hecha, falta tu revisión)
+### Etapa 2. Modelo 3D de las cuentas en GPU (hecha)
 
 Mirando de cerca las cuentas de `yunara.png`: bronce pálido, tachuelas de acero gris que sobresalen del
 contorno con un collar de bronce, líneas grabadas y medialunas anchas color carbón (dos o tres por lado).
@@ -81,15 +81,41 @@ Medido con la cámara real a 1280×720:
 | CPU, GPU frente a CPU, alternando dos veces | 102 y 107 % frente a 100 y 106 % de un núcleo: la GPU no añade carga |
 | Memoria | 368 MB (contexto de GPU y modelo de pose incluidos) |
 
-### Etapa 3. Mover las cuentas con las manos
+### Etapa 3. Mover las cuentas con las manos (hecha, falta tu revisión)
 
-Física de resortes por cuenta y una máquina de estados (en órbita, convocada, agarrada, lanzada,
-regresando) que se maneja con gestos. Aquí se rehace la parte de manos heredada (la escala con la
-segunda mano no se usa hoy).
+Gestos, con cualquiera de las dos manos:
+
+| Gesto | Efecto |
+|---|---|
+| Pinza (pulgar e índice juntos) cerca de una cuenta | La agarra; sigue los dedos con el aura más intensa |
+| Soltar la pinza despacio | La cuenta regresa planeando al cuello |
+| Soltar la pinza con la mano en movimiento rápido | La lanza: vuela con el impulso, frena y regresa |
+| Palma abierta sostenida medio segundo | Las cuentas vuelan a la mano y giran a su alrededor |
+| Puño con la mano que las convocó | Regresan al cuello |
+
+- `manos.py`: se quitó la escala con la segunda mano y los roles principal/segunda del proyecto base.
+  Cada mano lleva ahora su pinza (con histéresis: se cierra por debajo de 0.35 tamaños de mano y se
+  abre por encima de 0.50) y cuántas detecciones seguidas lleva con la palma abierta.
+- `cuentas.py`: cada cuenta tiene posición, velocidad y estado (órbita, mano, agarrada, libre,
+  regreso). Persigue su objetivo con un resorte de amortiguamiento crítico integrado de forma exacta,
+  así llega sin rebotar y sin saltos aunque la mano se detecte a tirones (25 veces por segundo frente
+  a 45 dibujos). Cada estado tiene su rigidez: casi pegada a los dedos al agarrarla, más suave al
+  regresar. La velocidad al soltar sale del propio resorte, sin estimar la de la mano.
+- Las cuentas agarradas o convocadas van un poco por delante del cuello, así no las tapa la silueta.
+- La mano que tiene las cuentas convocadas no agarra: al cerrarla en puño también hace pinza.
+- La GPU recibe la intensidad del aura de cada cuenta.
+- La consola muestra cuántas cuentas hay en cada estado.
+
+Comprobado con una mano simulada (pinza, arrastre, soltar despacio, lanzar, convocar, mover la mano y
+puño): todos los cambios de estado ocurren como en la tabla. En la app con la cámara real: 45 fps,
+CPU entre 110 y 147 % de un núcleo, y la consola registró cuentas convocadas, agarradas y regresando.
 
 ## Pendientes
 
 - Ajustar a ojo el tamaño, la altura y la inclinación del anillo con tu cámara (`config.py`, sección
   "Cuentas"), y el aspecto de la cuenta (secciones "Modelo 3D de la cuenta" y "Aspecto de las cuentas").
+- Calibrar los gestos con tu mano: `PINZA_CIERRA`/`PINZA_ABRE` si la pinza no engancha o se suelta
+  sola, `CONVOCAR_DETECCIONES` si la palma abierta convoca sin querer al acercar la mano para agarrar,
+  y `LANZAR_VELOCIDAD`/`LIBRE_SEGUNDOS` para el lanzamiento.
 - Con la oclusión, la silueta llega con un poco de retraso: si te mueves rápido, el borde de una cuenta
   de atrás puede verse un instante sobre la cara.

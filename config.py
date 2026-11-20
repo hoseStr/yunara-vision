@@ -24,8 +24,7 @@ CONFIANZA_DETECCION = 0.5
 CONFIANZA_PRESENCIA = 0.5
 CONFIANZA_SEGUIMIENTO = 0.5
 
-# --- Identidad y roles de las manos ---
-# La mano que lleva más tiempo en cuadro es la principal; la otra es la segunda.
+# --- Identidad de las manos ---
 SEGUIMIENTO_DISTANCIA_MAX = 0.30  # fracción del ancho; un salto mayor se toma como otra mano
 MANO_PERDIDA_TOLERANCIA = 4  # detecciones seguidas sin verla antes de darla por perdida
 
@@ -34,23 +33,13 @@ DEDOS_INERCIA = 4  # detecciones iguales seguidas para aceptar un conteo nuevo
 DEDO_MARGEN = 1.10  # punta más lejos de la muñeca que el nudillo medio, por este factor
 PULGAR_MARGEN = 1.05  # punta del pulgar más lejos de la base del meñique que su nudillo
 
-# --- Escala con la segunda mano (del proyecto base; hoy no se usa, se rehace con los gestos) ---
-ESCALA_MIN = 0.35
-ESCALA_MAX = 3.2
-# Tamaño fijo mientras no hay segunda mano: al empezar, al retirarla o si la principal se pierde y la
-# otra pasa a serlo. Solo la segunda mano cambia el tamaño.
-ESCALA_SIN_SEGUNDA = 0.5
-# "apertura": qué tan extendidos están los dedos de ESCALA_DEDOS (lo que mejor encaja con el video).
-# "pinza": distancia entre las puntas del pulgar y el índice.
-# Las dos medidas se dividen por el tamaño de la mano (muñeca a nudillo del dedo medio).
-ESCALA_MEDIDA = "apertura"
-ESCALA_DEDOS = (8, 12)  # puntas del índice y del medio
-ESCALA_APERTURA = (1.30, 2.00)  # medida que da ESCALA_MIN y medida que da ESCALA_MAX
-ESCALA_PINZA = (0.30, 2.00)
-# Una lectura que pasa del tope del mapa por más de este factor se descarta y la escala no cambia.
-# Solo ocurre con detecciones deformadas (mano cortada por el borde o movida): en el video, el 95 % de
-# las lecturas no pasa de 2.02 y todas las que superan 2.2 son de ese tipo.
-ESCALA_DESCARTE = 1.12
+# --- Gestos ---
+# Pinza: distancia entre las puntas del pulgar y el índice dividida por el tamaño de la mano (muñeca a
+# nudillo del dedo medio). Se cierra por debajo de PINZA_CIERRA y se abre por encima de PINZA_ABRE.
+PINZA_CIERRA = 0.35
+PINZA_ABRE = 0.50
+AGARRAR_ALCANCE = 1.8  # la pinza agarra una cuenta a menos de esto, en radios de cuenta en pantalla
+CONVOCAR_DETECCIONES = 12  # palma abierta sostenida (unas 25 detecciones por segundo: medio segundo)
 
 # --- Cuerpo y cuello ---
 CUERPO_PERDIDO_TOLERANCIA = 4  # detecciones seguidas sin ver a nadie antes de darlo por perdido
@@ -73,6 +62,24 @@ FLOTE_HZ = 0.35
 PERSPECTIVA_DISTANCIA = 3.0  # cámara virtual; menor = perspectiva más marcada
 SUAVIZADO = 0.25  # de posición, tamaño e inclinación, por fotograma a FPS_REFERENCIA
 FUNDIDO_SEGUNDOS = 0.3  # aparecer y desvanecerse con la persona
+
+# --- Movimiento de las cuentas ---
+# Cada cuenta persigue su objetivo con un resorte sin rebote; la rigidez va en rad/s (más = más rápida;
+# llega en unos 4 / rigidez segundos).
+ORBITA_OMEGA = 14  # en el anillo del cuello
+REGRESO_OMEGA = 5  # volviendo al cuello después de soltarla o lanzarla: planea
+MANO_OMEGA = 9  # convocada alrededor de la mano
+AGARRAR_OMEGA = 28  # agarrada con la pinza: casi pegada a los dedos
+MANO_ANILLO_RADIO = 1.3  # anillo alrededor de la mano, en tamaños de mano (muñeca a nudillo medio)
+MANO_INCLINACION = 65  # grados; más que el del cuello para que el anillo se vea bien abierto
+MANO_PROFUNDIDAD = -0.35  # en anchos de hombros; negativo = delante del cuello, así no la tapa la silueta
+LANZAR_VELOCIDAD = 2.5  # al soltar la pinza más rápido que esto (anchos de hombros por segundo), se lanza
+LIBRE_FRENADO = 1.2  # por segundo; cuánto frena en el aire
+LIBRE_VELOCIDAD_MIN = 0.4  # anchos de hombros por segundo; más lenta que esto, regresa
+LIBRE_SEGUNDOS = 1.2  # vuelo libre máximo antes de regresar
+BRILLO_MANEJADA = 2.2  # aura de la cuenta agarrada o lanzada, respecto a la normal
+BRILLO_CONVOCADA = 1.5  # aura de las cuentas convocadas
+BRILLO_SEGUNDOS = 0.15  # lo que tarda el aura en cambiar
 
 # --- Dibujo de las cuentas ---
 # "gpu": modelo 3D iluminado con moderngl. "cpu": esferas planas, sin GPU. Si la GPU no arranca, se

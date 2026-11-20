@@ -1,4 +1,4 @@
-"""Manos: detección con MediaPipe HandLandmarker, identidad, roles, conteo de dedos y escala."""
+"""Manos: detección con MediaPipe HandLandmarker, identidad, conteo de dedos y gestos."""
 import numpy as np
 from mediapipe.tasks.python import BaseOptions, vision
 
@@ -59,46 +59,23 @@ def contar_dedos(p):
     return int(n)
 
 
-def medida_escala(p):
-    """Medida de la segunda mano que gobierna la escala, relativa al tamaño de la mano."""
-    tamano = _dist(p, _MUNECA, _NUDILLO_MEDIO) or 1e-6
-    if config.ESCALA_MEDIDA == "pinza":
-        return _dist(p, _PULGAR_PUNTA, _INDICE_PUNTA) / tamano
-    return sum(_dist(p, punta, _MUNECA) for punta in config.ESCALA_DEDOS) / len(config.ESCALA_DEDOS) / tamano
-
-
-def _mapa_escala():
-    """Medida que da ESCALA_MIN y medida que da ESCALA_MAX."""
-    return config.ESCALA_PINZA if config.ESCALA_MEDIDA == "pinza" else config.ESCALA_APERTURA
-
-
-def medida_valida(medida):
-    """False si la medida es imposible para una mano real.
-
-    Una mano bien extendida da como mucho el tope del mapa. Mucho más solo sale de detecciones
-    deformadas: una mano cortada por el borde o movida, donde MediaPipe aplasta la palma y el tamaño
-    de la mano se queda casi en nada.
-    """
-    return medida <= _mapa_escala()[1] * config.ESCALA_DESCARTE
-
-
-def escala_desde(medida):
-    """Lleva la medida a una escala entre ESCALA_MIN y ESCALA_MAX, de forma lineal y con topes."""
-    bajo, alto = _mapa_escala()
-    t = min(1.0, max(0.0, (medida - bajo) / (alto - bajo)))
-    return config.ESCALA_MIN + t * (config.ESCALA_MAX - config.ESCALA_MIN)
-
-
 class Mano:
-    """Una mano seguida entre detecciones."""
+    """Una mano seguida entre detecciones, con sus dedos y sus gestos.
+
+    `pinza`: pulgar e índice juntos, con histéresis para que no parpadee en el umbral.
+    `abierta`: detecciones seguidas con los cinco dedos levantados y sin pinza.
+    """
 
     def __init__(self, identidad, puntos, aspecto):
         self.id = identidad
         self.perdida = 0  # detecciones seguidas sin verla
         self._aspecto = aspecto
         self._candidato, self._racha = None, 0
+        self.pinza = False
+        self.abierta = 0
         self._colocar(puntos)
         self.dedos = contar_dedos(self.plano)
+        self._gestos()
 
     def _colocar(self, puntos):
         self.puntos = puntos  # (21, 3) normalizados a la imagen
@@ -106,6 +83,21 @@ class Mano:
         self.plano = puntos[:, :2] * (1.0, self._aspecto)
         self.centro = self.plano[list(_PALMA)].mean(axis=0)
         self.tamano = _dist(self.plano, _MUNECA, _NUDILLO_MEDIO)
+
+    @property
+    def palma(self):
+        """Centro de la palma, normalizado a la imagen (x e y de 0 a 1)."""
+        return self.puntos[list(_PALMA), :2].mean(axis=0)
+
+    @property
+    def punto_pinza(self):
+        """Punto medio entre las puntas del pulgar y el índice, normalizado a la imagen."""
+        return (self.puntos[_PULGAR_PUNTA, :2] + self.puntos[_INDICE_PUNTA, :2]) / 2
+
+    def _gestos(self):
+        apertura = _dist(self.plano, _PULGAR_PUNTA, _INDICE_PUNTA) / (self.tamano or 1e-6)
+        self.pinza = apertura < (config.PINZA_ABRE if self.pinza else config.PINZA_CIERRA)
+        self.abierta = self.abierta + 1 if self.dedos == 5 and not self.pinza else 0
 
     def actualizar(self, puntos):
         self._colocar(puntos)
@@ -120,63 +112,44 @@ class Mano:
                 self.dedos, self._candidato, self._racha = leido, None, 0
         else:
             self._candidato, self._racha = leido, 1
+        self._gestos()
 
 
 class Seguidor:
-    """Mantiene la identidad de las manos, sus roles y la escala.
+    """Mantiene la identidad de las manos entre detecciones, emparejándolas por cercanía.
 
-    `actualizar` se llama una vez por resultado del detector. Las manos se guardan de la más antigua
-    a la más nueva: la primera es la principal y la siguiente es la segunda. No se usa la etiqueta
-    izquierda/derecha del modelo.
+    `actualizar` se llama una vez por resultado del detector. No se usa la etiqueta izquierda/derecha
+    del modelo. Una mano que deja de verse se conserva unas detecciones (`perdida` > 0) para que un
+    parpadeo del detector no suelte lo que tenía agarrado.
     """
 
     def __init__(self, aspecto):
         self._aspecto = aspecto  # alto / ancho de la imagen
-        self._manos = []
+        self.manos = []
         self._siguiente_id = 1
-        self.escala = config.ESCALA_SIN_SEGUNDA
-
-    @property
-    def principal(self):
-        return self._manos[0] if self._manos else None
-
-    @property
-    def segunda(self):
-        return self._manos[1] if len(self._manos) > 1 else None
 
     @property
     def visibles(self):
-        return [m for m in self._manos if m.perdida == 0]
+        return [m for m in self.manos if m.perdida == 0]
 
     def actualizar(self, detecciones):
         centros = [(d[list(_PALMA), :2] * (1.0, self._aspecto)).mean(axis=0) for d in detecciones]
         # Empareja cada mano conocida con la detección más cercana, empezando por los pares más próximos.
         pares = sorted((float(np.hypot(*(m.centro - c))), i, j)
-                       for i, m in enumerate(self._manos) for j, c in enumerate(centros))
+                       for i, m in enumerate(self.manos) for j, c in enumerate(centros))
         mano_de, usadas = {}, set()
         for distancia, i, j in pares:
             if distancia <= config.SEGUIMIENTO_DISTANCIA_MAX and i not in mano_de and j not in usadas:
                 mano_de[i] = j
                 usadas.add(j)
 
-        for i, mano in enumerate(self._manos):
+        for i, mano in enumerate(self.manos):
             if i in mano_de:
                 mano.actualizar(detecciones[mano_de[i]])
             else:
                 mano.perdida += 1
-        self._manos = [m for m in self._manos if m.perdida <= config.MANO_PERDIDA_TOLERANCIA]
+        self.manos = [m for m in self.manos if m.perdida <= config.MANO_PERDIDA_TOLERANCIA]
         for j, puntos in enumerate(detecciones):  # las detecciones sin pareja son manos nuevas
             if j not in usadas:
-                self._manos.append(Mano(self._siguiente_id, puntos, self._aspecto))
+                self.manos.append(Mano(self._siguiente_id, puntos, self._aspecto))
                 self._siguiente_id += 1
-
-        # Solo la segunda mano cambia el tamaño; sin ella vuelve al tamaño fijo. Mientras está en su
-        # margen de tolerancia (perdida > 0) se conserva la escala, para que un parpadeo del detector
-        # no haga saltar la figura.
-        segunda = self.segunda
-        if segunda is None:
-            self.escala = config.ESCALA_SIN_SEGUNDA
-        elif segunda.perdida == 0:
-            medida = medida_escala(segunda.plano)
-            if medida_valida(medida):  # si no, se conserva la escala anterior
-                self.escala = escala_desde(medida)

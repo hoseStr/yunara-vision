@@ -8,6 +8,7 @@ os.environ.setdefault("OPENCV_VIDEOIO_MSMF_ENABLE_HW_TRANSFORMS", "0")
 import argparse
 import sys
 import time
+from collections import Counter
 
 import cv2
 
@@ -107,7 +108,7 @@ def main():
                 cuerpo.actualizar(deteccion)
 
             render.esqueleto(seguidor.visibles)
-            cuentas.avanzar(ahora - dibujo_anterior, cuerpo, ancho)
+            cuentas.avanzar(ahora - dibujo_anterior, cuerpo, seguidor.manos, ancho, alto)
             dibujo_anterior = ahora
             if cuentas.centro is not None:
                 if gpu is not None:
@@ -150,7 +151,8 @@ def main():
                       f"cámara {capturas / lapso:4.1f}/s · "
                       f"manos {detector_manos.ms:4.1f} ms ({resultados / lapso:4.1f}/s) · "
                       f"cuerpo {detector_cuerpo.ms:4.1f} ms (cuello {'sí' if cuerpo.visible else 'no'}) · "
-                      f"manos vistas {len(seguidor.visibles)} · cpu {(cpu_ahora - cpu) / lapso * 100:3.0f} % de un núcleo",
+                      f"manos vistas {len(seguidor.visibles)} · "
+                      f"cuentas {', '.join(f'{n} {e}' for e, n in Counter(cuentas.estado).items())} · cpu {(cpu_ahora - cpu) / lapso * 100:3.0f} % de un núcleo",
                       flush=True)
                 cuadros, capturas, resultados, peor = 0, 0, 0, 0.0
                 reloj, cpu = ahora, cpu_ahora

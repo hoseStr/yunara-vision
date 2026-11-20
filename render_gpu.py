@@ -125,8 +125,10 @@ _AURA_VERTICES = "#version 330\n" + _PROYECCION + """
 in vec2 en_esquina;
 in vec3 i_centro;
 in float i_radio;
+in float i_brillo;
 out vec2 v_esquina;
 out float v_z;
+out float v_brillo;
 uniform float u_alcance;
 
 void main() {
@@ -134,8 +136,9 @@ void main() {
     vec3 c = i_centro + vec3(0.0, 0.0, 0.5 * i_radio);
     vec4 centro = proyectar(c);
     float w = centro.w;
-    v_esquina = en_esquina * u_alcance;
+    v_esquina = en_esquina * (1.0 + u_alcance * sqrt(max(i_brillo, 1.0)));  // el aura intensa llega más lejos
     v_z = i_centro.z;
+    v_brillo = i_brillo;
     vec2 s = (u_cuello + c.xy / w + v_esquina * i_radio / w);
     gl_Position = vec4(s / u_tam * 2.0 - 1.0, centro.z / w, 1.0);
 }
@@ -144,6 +147,7 @@ void main() {
 _AURA_FRAGMENTOS = "#version 330\n" + _PROYECCION + _OCLUSION + """
 in vec2 v_esquina;
 in float v_z;
+in float v_brillo;
 out vec4 f_color;
 uniform vec3 u_violeta;
 uniform float u_intensidad;
@@ -152,7 +156,7 @@ uniform float u_radio;
 
 void main() {
     float fuera = max(length(v_esquina) - 1.0, 0.0) / u_ancho;
-    vec3 aura = u_violeta * u_intensidad * exp(-fuera * fuera);
+    vec3 aura = u_violeta * u_intensidad * v_brillo * exp(-fuera * fuera);
     f_color = vec4(aura.bgr * visible(v_z, u_radio), 0.0);  // alfa 0: se suma sin tapar
 }
 """
@@ -185,17 +189,17 @@ class RenderGPU:
         vertices, indices = modelo_cuenta.construir()
         self._cuenta = self.ctx.program(vertex_shader=_CUENTA_VERTICES, fragment_shader=_CUENTA_FRAGMENTOS)
         self._aura = self.ctx.program(vertex_shader=_AURA_VERTICES, fragment_shader=_AURA_FRAGMENTOS)
-        self._instancias = self.ctx.buffer(reserve=config.CUENTAS_N * 13 * 4, dynamic=True)
+        self._instancias = self.ctx.buffer(reserve=config.CUENTAS_N * 14 * 4, dynamic=True)
         self._vao_cuenta = self.ctx.vertex_array(
             self._cuenta,
             [(self.ctx.buffer(vertices.tobytes()), "3f 3f 2f", "en_pos", "en_normal", "en_material"),
-             (self._instancias, "3f 3f 3f 3f 4x/i", "i_centro", "i_x", "i_y", "i_z")],
+             (self._instancias, "3f 3f 3f 3f 8x/i", "i_centro", "i_x", "i_y", "i_z")],
             index_buffer=self.ctx.buffer(indices.tobytes()), index_element_size=4)
         esquinas = np.array([(-1, -1), (1, -1), (-1, 1), (1, 1)], np.float32)
         self._vao_aura = self.ctx.vertex_array(
             self._aura,
             [(self.ctx.buffer(esquinas.tobytes()), "2f", "en_esquina"),
-             (self._instancias, "3f 36x f/i", "i_centro", "i_radio")])
+             (self._instancias, "3f 36x f f/i", "i_centro", "i_radio", "i_brillo")])
 
         # Búfer con 4 muestras por píxel para bordes suaves, y otro sin muestras para leerlo.
         tam = (ancho, alto)
@@ -228,7 +232,7 @@ class RenderGPU:
         self._cuenta["u_violeta"].value = _lineal(config.AURA_COLOR)
         for nombre, valor in {"u_tam": tam, "u_violeta": _srgb(config.AURA_COLOR),
                               "u_intensidad": config.AURA_INTENSIDAD, "u_ancho": config.AURA_ANCHO,
-                              "u_alcance": 1 + config.AURA_ALCANCE}.items():
+                              "u_alcance": config.AURA_ALCANCE}.items():
             self._aura[nombre].value = valor
         for programa in (self._cuenta, self._aura):
             programa["u_mascara"].value = 0
@@ -249,7 +253,7 @@ class RenderGPU:
         `escena` viene de `Cuentas.escena`. `bgra` es (alto, ancho, 4) en uint8, con los canales en
         orden BGR más la opacidad, y el color ya multiplicado por ella.
         """
-        cuello, centros, ejes, radio, distancia = escena
+        cuello, centros, ejes, radio, distancia, brillo = escena
         if opacidad <= 0 or not len(centros):
             self._pedidos = [None, None]  # al volver no se muestra un dibujo viejo
             return None
@@ -257,7 +261,9 @@ class RenderGPU:
         # Rectángulo que cubren las cuentas con su aura, en píxeles de pantalla.
         w = (distancia + centros[:, 2]) / distancia
         pantalla = cuello + centros[:, :2] / w[:, None]
-        alcance = radio * (1 + config.AURA_ALCANCE + config.TACHUELA_ALTURA) / w[:, None] + 2
+        # El aura más intensa se ve un poco más lejos: se da algo de margen por el brillo.
+        alcance = radio * (1 + config.AURA_ALCANCE * np.sqrt(np.maximum(brillo, 1))[:, None]
+                           + config.TACHUELA_ALTURA) / w[:, None] + 2
         x0, y0 = np.floor((pantalla - alcance).min(axis=0)).astype(int)
         x1, y1 = np.ceil((pantalla + alcance).max(axis=0)).astype(int)
         x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, self.ancho), min(y1, self.alto)
@@ -265,10 +271,11 @@ class RenderGPU:
             self._pedidos = [None, None]
             return None
 
-        datos = np.zeros((len(centros), 13), np.float32)
+        datos = np.zeros((len(centros), 14), np.float32)
         datos[:, 0:3] = centros
         datos[:, 3:12] = ejes.transpose(0, 2, 1).reshape(-1, 9)  # columnas de cada matriz
         datos[:, 12] = radio
+        datos[:, 13] = brillo
         self._instancias.write(datos.tobytes())
 
         oclusion = mascara is not None
