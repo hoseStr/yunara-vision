@@ -1,4 +1,4 @@
-"""Valores ajustables de Hand Figure. Todo lo que se puede tocar vive aquí."""
+"""Valores ajustables de Yunara. Todo lo que se puede tocar vive aquí."""
 from pathlib import Path
 
 # --- Ventana y cámara ---
@@ -7,14 +7,16 @@ ALTO = 720
 CAMARA_INDICE = 0
 CAMARA_FPS = 30
 ESPEJO = True  # vista tipo selfie
-TITULO = "Hand Figure"
+TITULO = "Yunara"
 FPS_OBJETIVO = 45  # ritmo de dibujo, independiente del ritmo de la cámara
-# Los valores "por fotograma" (suavizado, estela) valen para este ritmo; si FPS_OBJETIVO cambia,
+# Los valores "por fotograma" (suavizado) valen para este ritmo; si FPS_OBJETIVO cambia,
 # se convierten solos para que el aspecto no cambie.
 FPS_REFERENCIA = 45
 
-# --- Detección de manos ---
-MODELO = Path(__file__).parent / "modelos" / "hand_landmarker.task"
+# --- Detección (manos y cuerpo) ---
+MODELO_MANOS = Path(__file__).parent / "modelos" / "hand_landmarker.task"
+# "lite" basta para el cuello: 12 ms con silueta frente a 17 ms del "full" (medido en el video).
+MODELO_CUERPO = Path(__file__).parent / "modelos" / "pose_landmarker_lite.task"
 DETECCION_ANCHO = 640
 DETECCION_ALTO = 360
 MANOS_MAX = 2
@@ -32,7 +34,7 @@ DEDOS_INERCIA = 4  # detecciones iguales seguidas para aceptar un conteo nuevo
 DEDO_MARGEN = 1.10  # punta más lejos de la muñeca que el nudillo medio, por este factor
 PULGAR_MARGEN = 1.05  # punta del pulgar más lejos de la base del meñique que su nudillo
 
-# --- Escala con la segunda mano ---
+# --- Escala con la segunda mano (del proyecto base; hoy no se usa, se rehace con los gestos) ---
 ESCALA_MIN = 0.35
 ESCALA_MAX = 3.2
 # Tamaño fijo mientras no hay segunda mano: al empezar, al retirarla o si la principal se pierde y la
@@ -50,26 +52,41 @@ ESCALA_PINZA = (0.30, 2.00)
 # las lecturas no pasa de 2.02 y todas las que superan 2.2 son de ese tipo.
 ESCALA_DESCARTE = 1.12
 
-# --- Figura ---
-# Color por número de dedos, de 0 a 5: anillo, segmento, cuadrado, prisma triangular, cubo y
-# prisma pentagonal.
-FIGURA_COLORES = ("#DCEBFF", "#5CE6E0", "#55E6A5", "#F2E94E", "#FF9A4D", "#FF5FD0")
-FIGURA_DIAMETRO = 0.18  # diámetro de la base a escala x1.0, como fracción del ancho
-FIGURA_ALTURA = 2.4  # separación sobre el centro de la palma, en tamaños de mano (muñeca a nudillo medio)
-PRISMA_ALTURA = 0.707  # altura de los prismas respecto al diámetro de la base; 0.707 da un cubo exacto
-PERSPECTIVA_DISTANCIA = 1.8  # cámara virtual, en diámetros de figura; menor = perspectiva más marcada
-GIRO_VELOCIDAD = (0.6, 0.4)  # rad/s alrededor del eje vertical y del horizontal
-TRANSFORMACION_SEGUNDOS = 0.4
-SUAVIZADO = 0.25  # de posición y escala, por fotograma a FPS_REFERENCIA
-ARISTA_GROSOR = 3  # píxeles a 1280 de ancho
+# --- Cuerpo y cuello ---
+CUERPO_PERDIDO_TOLERANCIA = 4  # detecciones seguidas sin ver a nadie antes de darlo por perdido
+HOMBROS_VISIBILIDAD_MIN = 0.5  # por debajo, los hombros se estiman con las orejas
+CUELLO_POSICION = 0.45  # del centro de los hombros hacia la boca (0 hombros, 1 boca)
+HOMBROS_POR_OREJAS = 2.5  # ancho de hombros / distancia entre orejas, para el caso sin hombros
+CUELLO_BAJO_BOCA = 0.24  # en anchos de hombros, para el caso sin hombros
+# La silueta de la persona tapa las cuentas que pasan por detrás del cuello.
+OCLUSION = True
 
-# --- Brillo y estela de la figura ---
-# La estela es un búfer que se apaga un poco en cada dibujo y recibe las aristas nuevas; el halo es
-# ese mismo búfer desenfocado. Los dos se suman a la cámara.
-ESTELA_DECAIMIENTO = 0.82  # por fotograma a FPS_REFERENCIA
-HALO_DESENFOQUE = 5  # sigma del desenfoque, en píxeles a 1280 de ancho
-HALO_INTENSIDAD = 0.45
-NUCLEO_BLANCO = 0.3  # cuánto se acerca al blanco la línea central de cada arista (0 a 1)
+# --- Cuentas ---
+# Las medidas van en anchos de hombros, así el anillo crece y se encoge con la distancia a la cámara.
+CUENTAS_N = 6
+ANILLO_RADIO = 0.75
+CUENTA_DIAMETRO = 0.30
+ANILLO_INCLINACION = 22  # grados; la parte de atrás sube y la de delante baja
+ANILLO_GIRO = 0.8  # rad/s; negativo gira al revés
+FLOTE_AMPLITUD = 0.035  # subida y bajada de cada cuenta
+FLOTE_HZ = 0.35
+PERSPECTIVA_DISTANCIA = 3.0  # cámara virtual; menor = perspectiva más marcada
+SUAVIZADO = 0.25  # de posición, tamaño e inclinación, por fotograma a FPS_REFERENCIA
+FUNDIDO_SEGUNDOS = 0.3  # aparecer y desvanecerse con la persona
+
+# --- Aspecto de las cuentas (esferas provisionales hasta el modelo 3D) ---
+CUENTA_COLOR = "#8E6B40"  # bronce
+LUZ_DIRECCION = (-0.45, -0.65, 0.6)  # x derecha, y abajo, z hacia la cámara: luz arriba a la izquierda
+LUZ_AMBIENTE = 0.28
+LUZ_DIFUSA = 0.95
+BRILLO_COLOR = "#FFE8C8"
+BRILLO_INTENSIDAD = 0.55
+BRILLO_EXPONENTE = 24
+AURA_COLOR = "#9A70FF"  # violeta tenue alrededor de cada cuenta
+AURA_INTENSIDAD = 0.35
+AURA_ANCHO = 0.22  # caída del aura, en radios de cuenta
+AURA_ALCANCE = 0.5  # el sprite mide (1 + esto) diámetros: esto en radios a cada lado (a 0.22 de caída ya no se ve)
+AURA_BORDE = 0.35  # reflejo violeta en el contorno de la esfera
 
 # --- Escena ---
 BRILLO = 0.55  # brillo de la cámara en el centro
@@ -82,11 +99,10 @@ ESQUELETO_COLOR = (230, 240, 235)  # BGR
 ESQUELETO_OPACIDAD = 0.35
 
 # --- Textos ---
-TEXTO_AVISO = "Muestra la mano en cámara"
-TEXTO_ESTADO = "mano principal: {dedos} · segunda mano: {segunda} · {fps} fps"
-TEXTO_SEGUNDA_NO = "no"
-TEXTO_SEGUNDA_ESCALA = "escala ×{escala:.2f}"
-TEXTO_SOLO_FPS = "{fps} fps"  # estado cuando no hay manos
+TEXTO_AVISO = "Ponte frente a la cámara"
+TEXTO_ESTADO = "cuello: {cuello} · manos: {manos} · {fps} fps"
+TEXTO_SI = "sí"
+TEXTO_NO = "no"
 # Se prueban en orden; si ninguna está, se usa la fuente incluida en Pillow.
 FUENTES = ("segoeui.ttf", "SFNS.ttf", "Helvetica.ttc", "DejaVuSans.ttf", "Arial.ttf")
 AVISO_TAMANO = 13  # píxeles a 1280 de ancho

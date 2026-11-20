@@ -1,4 +1,4 @@
-"""Hand Figure: figura de neón sobre la mano, en una ventana nativa."""
+"""Yunara: sus cuentas giran alrededor de tu cuello, en una ventana nativa."""
 import os
 
 # Sin esto, Media Foundation tarda unos 7 s en abrir la cámara en Windows (medido: 6.8 s frente a
@@ -11,20 +11,22 @@ import time
 
 import cv2
 
-# OpenCV reparte cada operación entre todos los núcleos, y en zonas pequeñas como la de la figura los
+# OpenCV reparte cada operación entre todos los núcleos, y en zonas pequeñas como las de las cuentas los
 # hilos pasan más tiempo esperando que trabajando: medido, 11.4 ms de CPU por dibujo frente a 3.1 con
 # un solo hilo, sin diferencia en el tiempo real. La detección de MediaPipe usa sus propios hilos.
 cv2.setNumThreads(1)
 
 import config
 from camara import Camara
-from figuras import Figura
-from manos import Detector, Seguidor
+from cuentas import Cuentas
+from cuerpo import Cuerpo, DetectorCuerpo
+from deteccion import Preparador
+from manos import DetectorManos, Seguidor
 from render import Render
 
 
 def _argumentos():
-    analizador = argparse.ArgumentParser(description="Figura de neón que flota sobre la mano.")
+    analizador = argparse.ArgumentParser(description="Las cuentas de Yunara giran alrededor de tu cuello.")
     analizador.add_argument("--camara", type=int, default=config.CAMARA_INDICE, help="índice de la cámara")
     analizador.add_argument("--resolucion", default=f"{config.ANCHO}x{config.ALTO}",
                             help="tamaño de la ventana, por ejemplo 1280x720")
@@ -36,35 +38,35 @@ def _argumentos():
     return args.camara, ancho, alto
 
 
-def _texto_estado(seguidor, fps):
-    fps = round(fps)
-    if seguidor.principal is None:
-        return config.TEXTO_SOLO_FPS.format(fps=fps)
-    segunda = (config.TEXTO_SEGUNDA_NO if seguidor.segunda is None
-               else config.TEXTO_SEGUNDA_ESCALA.format(escala=seguidor.escala))
-    return config.TEXTO_ESTADO.format(dedos=seguidor.principal.dedos, segunda=segunda, fps=fps)
+def _texto_estado(cuerpo, seguidor, fps):
+    return config.TEXTO_ESTADO.format(cuello=config.TEXTO_SI if cuerpo.visible else config.TEXTO_NO,
+                                      manos=len(seguidor.visibles), fps=round(fps))
 
 
 def main():
     indice, ancho, alto = _argumentos()
-    detector = Detector()
+    detector_manos = DetectorManos()
+    detector_cuerpo = DetectorCuerpo()
     try:
         camara = Camara(indice, ancho, alto, config.CAMARA_FPS)
     except RuntimeError as error:
-        detector.cerrar()
+        detector_manos.cerrar()
+        detector_cuerpo.cerrar()
         sys.exit(str(error))
     print(f"cámara {indice}: {camara.ancho}x{camara.alto} a {camara.fps:.0f} fps ({camara.backend})", flush=True)
 
     render = Render(ancho, alto)
+    preparador = Preparador()
     seguidor = Seguidor(alto / ancho)
-    figura = Figura()
+    cuerpo = Cuerpo(alto / ancho)
+    cuentas = Cuentas()
     cv2.namedWindow(config.TITULO, cv2.WINDOW_AUTOSIZE)
 
     # El dibujo lleva su propio reloj: cada vuelta usa el último fotograma que haya, sea nuevo o no.
     periodo = 1.0 / config.FPS_OBJETIVO
     siguiente = time.perf_counter()
     visto, ultima_senal = 0, siguiente
-    deteccion_vista, dibujo_anterior = 0, siguiente
+    manos_vistas, cuerpos_vistos, dibujo_anterior = 0, 0, siguiente
     cuadros, capturas, resultados, peor = 0, 0, 0, 0.0
     reloj, cpu, anterior = siguiente, time.process_time(), siguiente
     intervalo = periodo  # entre dibujos, suavizado: da los fps que se muestran
@@ -76,30 +78,36 @@ def main():
             if numero != visto:
                 visto, ultima_senal = numero, ahora
                 capturas += 1
-                # El detector recibe la imagen sin atenuar; la atenuación es solo para la vista.
-                detector.enviar(render.camara(fotograma))
+                # Los detectores reciben la imagen sin atenuar; la atenuación es solo para la vista.
+                imagen = preparador.preparar(render.camara(fotograma))
+                detector_manos.enviar(imagen)
+                detector_cuerpo.enviar(imagen)
             elif ahora - ultima_senal > 3.0:
                 print("La cámara dejó de entregar fotogramas.")
                 break
             render.fondo()
 
-            # El seguimiento avanza una vez por resultado del detector, no una vez por dibujo.
-            numero_deteccion, detecciones = detector.resultado
-            if numero_deteccion != deteccion_vista:
-                deteccion_vista = numero_deteccion
+            # El seguimiento avanza una vez por resultado de cada detector, no una vez por dibujo.
+            numero, detecciones = detector_manos.resultado
+            if numero != manos_vistas:
+                manos_vistas = numero
                 resultados += 1
                 seguidor.actualizar(detecciones)
+            numero, deteccion = detector_cuerpo.resultado
+            if numero != cuerpos_vistos:
+                cuerpos_vistos = numero
+                cuerpo.actualizar(deteccion)
 
             render.esqueleto(seguidor.visibles)
-            figura.avanzar(ahora - dibujo_anterior, seguidor.principal, seguidor.escala, ancho)
+            cuentas.avanzar(ahora - dibujo_anterior, cuerpo, ancho)
             dibujo_anterior = ahora
-            if figura.centro is not None:
-                render.figura(figura.proyectar(ancho), figura.color)
-            if seguidor.principal is None:
+            if cuentas.centro is not None:
+                render.cuentas(cuentas.proyectar(), cuerpo.mascara, cuentas.opacidad)
+            if not cuerpo.visible:
                 render.aviso(config.TEXTO_AVISO)
             # Como en el original, el estado cambia a saltos unas 4 veces por segundo.
             if ahora >= siguiente_estado:
-                estado, siguiente_estado = _texto_estado(seguidor, 1 / intervalo), ahora + config.ESTADO_PERIODO
+                estado, siguiente_estado = _texto_estado(cuerpo, seguidor, 1 / intervalo), ahora + config.ESTADO_PERIODO
             render.estado(estado)
             cv2.imshow(config.TITULO, render.lienzo)
 
@@ -127,8 +135,9 @@ def main():
                 cpu_ahora = time.process_time()
                 print(f"{cuadros / lapso:5.1f} fps (peor intervalo {peor * 1000:4.1f} ms) · "
                       f"cámara {capturas / lapso:4.1f}/s · "
-                      f"detección {detector.ms:4.1f} ms ({resultados / lapso:4.1f}/s) · "
-                      f"manos {len(seguidor.visibles)} · cpu {(cpu_ahora - cpu) / lapso * 100:3.0f} % de un núcleo",
+                      f"manos {detector_manos.ms:4.1f} ms ({resultados / lapso:4.1f}/s) · "
+                      f"cuerpo {detector_cuerpo.ms:4.1f} ms (cuello {'sí' if cuerpo.visible else 'no'}) · "
+                      f"manos vistas {len(seguidor.visibles)} · cpu {(cpu_ahora - cpu) / lapso * 100:3.0f} % de un núcleo",
                       flush=True)
                 cuadros, capturas, resultados, peor = 0, 0, 0, 0.0
                 reloj, cpu = ahora, cpu_ahora
@@ -136,7 +145,8 @@ def main():
         pass
     finally:
         camara.cerrar()
-        detector.cerrar()
+        detector_manos.cerrar()
+        detector_cuerpo.cerrar()
         cv2.destroyAllWindows()
 
 

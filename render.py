@@ -1,5 +1,5 @@
-"""Composición de la imagen: cámara atenuada, esqueleto, figura con estela y halo, y textos."""
-from collections import deque
+"""Composición de la imagen: cámara atenuada, esqueleto, cuentas con aura y oclusión, y textos."""
+import math
 
 import cv2
 import numpy as np
@@ -9,7 +9,7 @@ import config
 from manos import CONEXIONES
 
 _CONEXIONES = np.array(CONEXIONES)
-_REDUCCION = 4  # el halo se calcula a 1/4 de resolución
+_MAESTRA_DIAMETRO = 256  # diámetro al que se calcula la esfera; se rehace más grande si hace falta
 
 
 def _mapa_ganancia(ancho, alto):
@@ -24,28 +24,48 @@ def _mapa_ganancia(ancho, alto):
     return np.clip(np.rint(mapa), 0, 255).astype(np.uint8)
 
 
-def _trazos(segmentos):
-    """Convierte los segmentos (n, 2, 2) en píxeles en polilíneas con 4 bits de fracción.
+def _bgr(hexadecimal):
+    h = hexadecimal.lstrip("#")
+    return np.array([int(h[4:6], 16), int(h[2:4], 16), int(h[0:2], 16)], np.float32)
 
-    Los segmentos que se tocan se unen en una sola polilínea, que OpenCV dibuja más rápido que
-    segmentos sueltos, y se descartan los de menos de medio píxel (las uniones de las figuras planas
-    miden cero).
+
+def _normal(v):
+    v = np.asarray(v, np.float32)
+    return v / np.linalg.norm(v)
+
+
+def _lado(diametro):
+    """Lado del sprite de una cuenta de ese diámetro, con sitio para el aura."""
+    return math.ceil(diametro * (1 + config.AURA_ALCANCE))
+
+
+def _esfera(diametro):
+    """Sprite de una cuenta: esfera de bronce iluminada con su aura violeta, en float32.
+
+    Devuelve (lado, lado, 4): los tres primeros canales son la tinta (BGR) que se suma encima, ya
+    multiplicada por la opacidad de la esfera, y el cuarto es esa opacidad. Fuera de la esfera la
+    tinta es el aura, que se suma sin tapar el fondo.
     """
-    p = np.rint(segmentos * 16).astype(np.int32)  # 4 bits de fracción: el giro lento no salta de píxel en píxel
-    p = p[np.abs(p[:, 1] - p[:, 0]).max(axis=1) > 8]
-    if not len(p):
-        return []
-    cortes = np.flatnonzero((p[1:, 0] != p[:-1, 1]).any(axis=1)) + 1
-    return [np.concatenate((g[:, 0], g[-1:, 1])) for g in np.split(p, cortes)]
+    r = diametro / 2
+    lado = _lado(diametro)
+    y, x = (np.mgrid[0:lado, 0:lado].astype(np.float32) + 0.5 - lado / 2) / r
+    d = np.hypot(x, y)
+    nz = np.sqrt(np.clip(1 - d * d, 0, 1))
+    alfa = np.clip((1 - d) * r + 0.5, 0, 1)[..., None]  # borde suavizado de un píxel
 
+    luz = _normal(config.LUZ_DIRECCION)  # x a la derecha, y hacia abajo, z hacia la cámara
+    medio = _normal(luz + (0, 0, 1))
+    difusa = np.clip(x * luz[0] + y * luz[1] + nz * luz[2], 0, 1)[..., None]
+    brillo = (np.clip(x * medio[0] + y * medio[1] + nz * medio[2], 0, 1) ** config.BRILLO_EXPONENTE)[..., None]
+    borde = ((1 - nz) ** 3)[..., None]
+    violeta = _bgr(config.AURA_COLOR)
+    color = (_bgr(config.CUENTA_COLOR) * (config.LUZ_AMBIENTE + config.LUZ_DIFUSA * difusa)
+             + _bgr(config.BRILLO_COLOR) * config.BRILLO_INTENSIDAD * brillo
+             + violeta * config.AURA_BORDE * borde)
 
-def _pasos_hasta_apagar(factor):
-    """Dibujos que tarda un píxel a 255 en llegar a 0 con el decaimiento de la estela."""
-    v, pasos = np.full((1, 1), 255, np.uint8), 0
-    while v[0, 0]:
-        v = cv2.addWeighted(v, factor, v, 0, -1)
-        pasos += 1
-    return pasos
+    fuera = np.maximum(d - 1, 0)[..., None] / config.AURA_ANCHO
+    aura = violeta * config.AURA_INTENSIDAD * np.exp(-fuera * fuera)
+    return np.concatenate((color * alfa + aura * (1 - alfa), alfa), axis=-1)
 
 
 class Render:
@@ -59,18 +79,10 @@ class Render:
         self._fondo = np.empty_like(self.lienzo)  # la misma, atenuada
         self._ganancia = _mapa_ganancia(ancho, alto)
 
-        # Estela: se apaga restando además 1 en cada paso para que los valores bajos lleguen a 0
-        # (convertScaleAbs redondea y deja restos de 1 y 2 que no desaparecen nunca).
-        self._estela = np.zeros_like(self.lienzo)
-        # El halo sale de una segunda estela a 1/4 de resolución donde las aristas se dibujan
-        # directamente: reducir la estela grande costaba 1.3 ms por dibujo.
-        self._estela_chica = np.zeros((-(-alto // _REDUCCION), -(-ancho // _REDUCCION), 3), np.uint8)
-        self._decaimiento = config.ESTELA_DECAIMIENTO ** (config.FPS_REFERENCIA / config.FPS_OBJETIVO)
-        # Rectángulos de las últimas aristas dibujadas. Todo lo que hay en la estela está dentro de
-        # alguno, así que basta trabajar en su unión en vez de en la imagen entera.
-        self._cajas = deque(maxlen=_pasos_hasta_apagar(self._decaimiento) + 1)
-        self._grosor = max(1, round(config.ARISTA_GROSOR * self._px))
-        self._halo_sigma = config.HALO_DESENFOQUE * self._px / _REDUCCION  # en píxeles de la estela chica
+        # La esfera se calcula una vez a buen tamaño (costaba 7 ms a 130 px) y cada diámetro sale de
+        # reducirla. Los sprites listos se guardan por diámetro en píxeles.
+        self._maestra = _esfera(_MAESTRA_DIAMETRO)
+        self._esferas = {}
 
         self._fuentes = {}
         self._parches = {}  # textos ya rasterizados
@@ -123,64 +135,76 @@ class Render:
                           config.ESQUELETO_COLOR, 1, cv2.LINE_AA)
             cv2.addWeighted(capa, config.ESQUELETO_OPACIDAD, zona, 1 - config.ESQUELETO_OPACIDAD, 0, dst=zona)
 
-    # --- Figura ---
+    # --- Cuentas ---
 
     def _recorte(self, x0, y0, x1, y1):
         x0, y0 = max(int(x0), 0), max(int(y0), 0)
         x1, y1 = min(int(np.ceil(x1)), self.ancho), min(int(np.ceil(y1)), self.alto)
         return (x0, y0, x1, y1) if x1 > x0 and y1 > y0 else None
 
-    def figura(self, segmentos, color):
-        """Aristas de la figura con estela, halo aditivo y núcleo claro.
+    def _sprite(self, diametro):
+        """(alfa, conserva, tinta) de la cuenta en uint8 de 3 canales, listos para mezclar."""
+        clave = max(2, round(diametro))
+        if clave not in self._esferas:
+            if len(self._esferas) > 256:
+                self._esferas.clear()
+            if _lado(clave) > self._maestra.shape[0]:
+                self._maestra = _esfera(clave)
+            lado = _lado(clave)
+            reducida = cv2.resize(self._maestra, (lado, lado), interpolation=cv2.INTER_AREA)
+            alfa = cv2.convertScaleAbs(reducida[..., 3], alpha=255)
+            alfa = cv2.cvtColor(alfa, cv2.COLOR_GRAY2BGR)
+            tinta = cv2.convertScaleAbs(np.ascontiguousarray(reducida[..., :3]))
+            self._esferas[clave] = (alfa, cv2.bitwise_not(alfa), tinta)
+        return self._esferas[clave]
 
-        `segmentos` viene en píxeles con forma (n, 2, 2). Se llama en cada dibujo desde que la
-        figura existe, porque la estela tiene que seguir apagándose.
+    def _silueta(self, mascara, x0, y0, x1, y1):
+        """Trozo de la máscara de silueta (al tamaño de detección) llevado al rectángulo indicado."""
+        mh, mw = mascara.shape
+        sx, sy = self.ancho / mw, self.alto / mh
+        # Lleva el píxel (u, v) de la máscara a (sx·(u + ½) − ½ − x0, ...) del rectángulo.
+        m = np.float32([[sx, 0, 0.5 * sx - 0.5 - x0], [0, sy, 0.5 * sy - 0.5 - y0]])
+        return cv2.warpAffine(mascara, m, (x1 - x0, y1 - y0), flags=cv2.INTER_LINEAR,
+                              borderMode=cv2.BORDER_REPLICATE)
+
+    def cuentas(self, cuentas, mascara, opacidad):
+        """Dibuja las cuentas de atrás hacia delante.
+
+        `cuentas` viene de `Cuentas.proyectar`. Donde una cuenta está detrás del cuello, la silueta de
+        la persona la tapa. Todo se mezcla en uint8 con OpenCV: con numpy en float costaba 0.75 ms por
+        cuenta.
         """
-        margen = self._grosor + 2
-        esquinas = segmentos.reshape(-1, 2)
-        self._cajas.append(self._recorte(*(esquinas.min(axis=0) - margen), *(esquinas.max(axis=0) + margen)))
-        cajas = [c for c in self._cajas if c is not None]
-        if not cajas:
+        if opacidad <= 0:
             return
-        x0, y0 = min(c[0] for c in cajas), min(c[1] for c in cajas)
-        x1, y1 = max(c[2] for c in cajas), max(c[3] for c in cajas)
-
-        trazos = _trazos(segmentos)
-        bgr = tuple(float(c) for c in color)
-
-        # Estela: apaga lo anterior y dibuja las aristas actuales en su color.
-        estela = self._estela[y0:y1, x0:x1]
-        cv2.addWeighted(estela, self._decaimiento, estela, 0, -1, dst=estela)
-        # Lo mismo a 1/4 de resolución para el halo.
-        q, h, w = _REDUCCION, *self._estela_chica.shape[:2]
-        chica = self._estela_chica[y0 // q:-(-y1 // q), x0 // q:-(-x1 // q)]
-        cv2.addWeighted(chica, self._decaimiento, chica, 0, -1, dst=chica)
-        if trazos:
-            cv2.polylines(self._estela, trazos, False, bgr, self._grosor, cv2.LINE_AA, shift=4)
-            # Con shift=6 los mismos puntos quedan divididos por 4.
-            cv2.polylines(self._estela_chica, trazos, False, bgr, 1, cv2.LINE_AA, shift=6)
-
-        # Halo: la estela chica desenfocada, ampliada y sumada, en una zona con margen para el desenfoque.
-        m = int(np.ceil(3 * self._halo_sigma))
-        sx0, sy0 = max(x0 // q - m, 0), max(y0 // q - m, 0)
-        sx1, sy1 = min(-(-x1 // q) + m, w), min(-(-y1 // q) + m, h)
-        halo = cv2.GaussianBlur(self._estela_chica[sy0:sy1, sx0:sx1], (0, 0), self._halo_sigma)
-        cv2.convertScaleAbs(halo, dst=halo, alpha=config.HALO_INTENSIDAD)
-        halo = cv2.resize(halo, ((sx1 - sx0) * q, (sy1 - sy0) * q), interpolation=cv2.INTER_LINEAR)
-        hx1, hy1 = min(sx1 * q, self.ancho), min(sy1 * q, self.alto)
-        zona = self.lienzo[sy0 * q:hy1, sx0 * q:hx1]
-        cv2.add(zona, halo[:hy1 - sy0 * q, :hx1 - sx0 * q], dst=zona)
-
-        zona = self.lienzo[y0:y1, x0:x1]
-        cv2.add(zona, estela, dst=zona)
-        if trazos:
-            nucleo = tuple(c + (255 - c) * config.NUCLEO_BLANCO for c in bgr)
-            cv2.polylines(self.lienzo, trazos, False, nucleo, 1, cv2.LINE_AA, shift=4)
+        for x, y, diametro, oculta in cuentas:
+            alfa, conserva, tinta = self._sprite(diametro)
+            lado = alfa.shape[0]
+            x0, y0 = round(x - lado / 2), round(y - lado / 2)
+            caja = self._recorte(x0, y0, x0 + lado, y0 + lado)
+            if caja is None:
+                continue
+            cx0, cy0, cx1, cy1 = caja
+            sx, sy = slice(cx0 - x0, cx1 - x0), slice(cy0 - y0, cy1 - y0)
+            zona = self.lienzo[cy0:cy1, cx0:cx1]
+            alfa, conserva, tinta = alfa[sy, sx], conserva[sy, sx], tinta[sy, sx]
+            tapada = oculta > 0 and mascara is not None
+            if opacidad < 1 or tapada:
+                # Visibilidad por píxel, de 0 a 255: la opacidad, menos lo que tapa la silueta.
+                if tapada:
+                    visible = cv2.convertScaleAbs(self._silueta(mascara, *caja),
+                                                  alpha=-opacidad * oculta, beta=255 * opacidad)
+                else:
+                    visible = np.full(zona.shape[:2], round(255 * opacidad), np.uint8)
+                visible = cv2.cvtColor(visible, cv2.COLOR_GRAY2BGR)
+                conserva = cv2.bitwise_not(cv2.multiply(alfa, visible, scale=1 / 255))
+                tinta = cv2.multiply(tinta, visible, scale=1 / 255)
+            cv2.multiply(zona, conserva, dst=zona, scale=1 / 255)
+            cv2.add(zona, tinta, dst=zona)
 
     # --- Textos ---
 
     def aviso(self, texto):
-        """Aviso centrado, para cuando no hay manos."""
+        """Aviso centrado, para cuando no hay nadie frente a la cámara."""
         self._texto(texto, config.AVISO_TAMANO, config.AVISO_COLOR, self.ancho / 2, self.alto / 2, "mm")
 
     def estado(self, texto):

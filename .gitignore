@@ -2,5 +2,5 @@
 __pycache__/
 *.pyc
 
-# Video de referencia: material de terceros, no se publica
-referencia/*.mp4
+# Material de referencia (video, imágenes, gif): de terceros, no se publica
+referencia/

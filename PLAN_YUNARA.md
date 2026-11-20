@@ -1,0 +1,76 @@
+# Plan: las cuentas de Yunara alrededor del cuello
+
+Proyecto construido sobre la base de Hand Figure (`PLAN.md`). Se conserva lo que ya funcionaba: cámara
+sin retraso, detección asíncrona, bucle de dibujo con reloj propio a 45 fps y valores en `config.py`.
+Lo que aquí dice "medido" se ejecutó de verdad en esta máquina (Ryzen 5 5600X, Windows 11).
+
+## Referencias
+
+En `referencia/` están `yunara.png`, `yunara_2.png` y `yunara_bailando.gif` (25 fotogramas de 220×144,
+2.5 s).
+
+- Las armas son **6 cuentas esféricas de bronce** con relieves oscuros y tachuelas, de tamaño parecido a
+  la cabeza.
+- En `yunara.png` forman un anillo inclinado alrededor del cuerpo: se ven 5 y la sexta queda tapada.
+  Las de atrás están más arriba y se ven más chicas que las de delante.
+- En el baile flotan despacio en arco detrás de la cabeza, cada una con un **aura violeta tenue**.
+
+Pedido: las cuentas giran alrededor del cuello. Primero esferas básicas, después un modelo 3D realista.
+
+## Etapas
+
+### Etapa 1. Esferas alrededor del cuello (hecha, falta tu revisión)
+
+- `deteccion.py`: base común de los detectores. La imagen se reduce a 640×360 una sola vez y va a los
+  dos. Se corrigió además que una respuesta tardía del detector lo marcara como libre con un envío
+  pendiente.
+- `cuerpo.py`: `PoseLandmarker` lite con silueta. El cuello está entre el centro de los hombros y la
+  boca (45 % hacia la boca); la escala es el ancho de hombros y la inclinación sigue la línea de los
+  hombros. Si los hombros salen del cuadro, se estiman con las orejas.
+- `cuentas.py`: anillo de 6 cuentas con giro, flote, inclinación de 22° y perspectiva. Todas las
+  medidas van en anchos de hombros, así el anillo crece y se encoge con la distancia a la cámara.
+  Aparecen y se desvanecen con la persona.
+- `render.py`: esferas de bronce iluminadas con aura violeta. Las cuentas que pasan detrás del cuello
+  las tapa la silueta de la persona.
+- Se quitó la figura de alambre, la estela y el halo. `figuras.py` quedó sin usar, para borrarlo en el
+  commit. La detección de manos sigue activa para la etapa de gestos.
+
+Medido:
+
+| Medida | Valor |
+|---|---|
+| Pose lite, con silueta (video de referencia) | 12.1 ms de media; el modelo full, 17.1 ms |
+| Pose lite en la app con la cámara real | 13 a 16 ms |
+| Dibujo de las cuentas (video de referencia) | 0.83 ms de media, p95 1.1 ms |
+| Ritmo de dibujo con cámara real | 45 fps, peor intervalo 22.7 ms |
+| CPU del proceso | 83 a 120 % de un núcleo (antes 60 a 100 %) |
+
+La primera versión del dibujo mezclaba en float con numpy y costaba 5.1 ms. Ahora mezcla en uint8 con
+OpenCV y reduce una esfera maestra en vez de calcular cada tamaño.
+
+### Etapa 2. Modelo 3D de las cuentas
+
+Sustituir la esfera por la cuenta real: relieves, tachuelas, giro propio de cada cuenta e iluminación.
+Lo primero es decidir el renderizado:
+
+- **Sprites precalculados:** se renderiza el modelo en varios ángulos una sola vez y se dibuja como hoy.
+  Sigue todo en CPU, pero el giro propio queda limitado a los ángulos guardados.
+- **GPU (moderngl) fuera de pantalla:** las 6 cuentas como mallas iluminadas, renderizadas en una capa
+  con transparencia y compuestas sobre la cámara. Es lo más realista, pero añade una dependencia y la
+  GPU.
+
+Falta el modelo: un `.glb`/`.obj` que consigas o hagas tú, o uno modelado en código (esfera con relieves
+y tachuelas). No se extraen modelos del cliente del juego.
+
+### Etapa 3. Mover las cuentas con las manos
+
+Física de resortes por cuenta y una máquina de estados (en órbita, convocada, agarrada, lanzada,
+regresando) que se maneja con gestos. Aquí se rehace la parte de manos heredada (la escala con la
+segunda mano no se usa hoy).
+
+## Pendientes
+
+- Ajustar a ojo el tamaño, la altura y la inclinación del anillo con tu cámara (`config.py`, sección
+  "Cuentas").
+- Con la oclusión, la silueta llega con un poco de retraso: si te mueves rápido, el borde de una cuenta
+  de atrás puede verse un instante sobre la cara.
