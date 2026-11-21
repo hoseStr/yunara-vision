@@ -49,6 +49,9 @@ HOMBROS_POR_OREJAS = 2.5  # ancho de hombros / distancia entre orejas, para el c
 CUELLO_BAJO_BOCA = 0.24  # en anchos de hombros, para el caso sin hombros
 # La silueta de la persona tapa las cuentas que pasan por detrás del cuello.
 OCLUSION = True
+# La silueta es una probabilidad de 0 a 1; por encima de esto tapa del todo, por debajo no tapa.
+# Más bajo tapa también el pelo suelto y los bordes dudosos; más alto deja ver más la cuenta.
+OCLUSION_UMBRAL = 0.5
 
 # --- Cuentas ---
 # Las medidas van en anchos de hombros, así el anillo crece y se encoge con la distancia a la cámara.

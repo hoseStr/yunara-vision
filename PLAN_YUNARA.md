@@ -110,6 +110,19 @@ Comprobado con una mano simulada (pinza, arrastre, soltar despacio, lanzar, conv
 puño): todos los cambios de estado ocurren como en la tabla. En la app con la cámara real: 45 fps,
 CPU entre 110 y 147 % de un núcleo, y la consola registró cuentas convocadas, agarradas y regresando.
 
+### Ajuste: oclusión nítida detrás de la cabeza
+
+Las cuentas se veían difuminadas, como fantasmas, al pasar detrás de la cabeza. Había dos causas:
+
+- La máscara de MediaPipe es una probabilidad: baja despacio en varios píxeles y en el pelo no llega
+  a 1. Con la máscara en 0.7, la cuenta quedaba un 30 % visible. Ahora se corta en `OCLUSION_UMBRAL`
+  (0.5) y tapa del todo o nada, con un borde de un píxel de pantalla (`fwidth`) para que no se vea
+  dentado. Comprobado con una silueta sintética: el borde pasa de 0 a 255 en 2 píxeles.
+- La cuenta pasaba de delante a detrás a lo largo de un radio de profundidad, transparentándose. Ahora
+  el corte en el plano del cuello dura un píxel. El aura conserva el paso suave, porque es un brillo.
+
+El dibujo en CPU (`RENDER_CUENTAS = "cpu"`) sigue igual: con esferas planas no hay profundidad por píxel.
+
 ## Pendientes
 
 - Ajustar a ojo el tamaño, la altura y la inclinación del anillo con tu cámara (`config.py`, sección

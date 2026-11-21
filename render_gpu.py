@@ -33,13 +33,23 @@ _OCLUSION = """
 uniform sampler2D u_mascara;
 uniform bool u_oclusion;
 uniform float u_opacidad;
+uniform float u_umbral;
 
-// Opacidad de un punto a profundidad z: la silueta lo tapa cuanto más detrás del cuello está.
+// Cuánto tapa la persona este píxel, 0 o 1. La máscara de MediaPipe es una probabilidad que cae
+// despacio en varios píxeles y en el pelo no llega a 1; usada tal cual dejaba la cuenta medio
+// transparente sobre la cabeza. Se corta en el umbral con un borde de un píxel de pantalla.
+float silueta() {
+    float m = texture(u_mascara, gl_FragCoord.xy / u_tam).r;
+    float borde = max(fwidth(m), 1e-3);
+    return smoothstep(u_umbral - borde, u_umbral + borde, m);
+}
+
+// Opacidad de un punto a profundidad z: si está detrás del cuello, la silueta lo tapa. `transicion`
+// es el tramo de z en que pasa de delante a detrás, centrado en el plano del cuello.
 float visible(float z, float transicion) {
     float v = u_opacidad;
     if (u_oclusion) {
-        float m = texture(u_mascara, gl_FragCoord.xy / u_tam).r;
-        v *= 1.0 - clamp(z / transicion, 0.0, 1.0) * m;
+        v *= 1.0 - clamp(z / transicion + 0.5, 0.0, 1.0) * silueta();
     }
     return v;
 }
@@ -72,7 +82,6 @@ in vec3 v_normal;
 in vec2 v_material;
 out vec4 f_color;
 
-uniform float u_radio;
 uniform vec3 u_bronce;
 uniform vec3 u_tachuela;
 uniform vec3 u_oscuro;
@@ -116,7 +125,8 @@ void main() {
     color += u_violeta * u_borde * pow(1.0 - ndv, 3.0);  // reflejo del aura en el contorno
 
     color = pow(color, vec3(1.0 / 2.2));
-    float a = visible(v_pos.z, u_radio);
+    // Corte limpio en el plano del cuello: la transición dura un píxel, solo para suavizar el borde.
+    float a = visible(v_pos.z, max(fwidth(v_pos.z), 1e-3));
     f_color = vec4(color.bgr * a, a);  // la CPU trabaja en BGR
 }
 """
@@ -236,6 +246,7 @@ class RenderGPU:
             self._aura[nombre].value = valor
         for programa in (self._cuenta, self._aura):
             programa["u_mascara"].value = 0
+            programa["u_umbral"].value = config.OCLUSION_UMBRAL
 
     def _subir_mascara(self, mascara):
         if mascara is self._mascara_subida:
@@ -287,7 +298,7 @@ class RenderGPU:
             programa["u_distancia"].value = distancia
             programa["u_oclusion"].value = oclusion
             programa["u_opacidad"].value = opacidad
-            programa["u_radio"].value = radio
+        self._aura["u_radio"].value = radio  # la cuenta ya no lo usa: su corte es por píxel
 
         self._fbo_muestras.use()
         self._fbo_muestras.clear(0.0, 0.0, 0.0, 0.0, depth=1.0)
